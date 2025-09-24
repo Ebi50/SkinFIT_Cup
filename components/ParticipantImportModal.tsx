@@ -2,8 +2,9 @@ import React, { useState, useCallback, useMemo } from 'react';
 import { Participant, Settings, PerfClass, Gender, GroupLabel } from '../types';
 import { CloseIcon, UploadIcon } from './icons';
 
-// Make PapaParse available from the global scope
+// Make PapaParse and XLSX available from the global scope
 declare const Papa: any;
+declare const XLSX: any;
 
 interface ParticipantImportModalProps {
   onClose: () => void;
@@ -43,28 +44,71 @@ export const ParticipantImportModal: React.FC<ParticipantImportModalProps> = ({ 
     if (selectedFile) {
       setFile(selectedFile);
       setError('');
-      Papa.parse(selectedFile, {
-        header: true,
-        skipEmptyLines: true,
-        complete: (results: any) => {
-          if (results.errors.length) {
-            setError('Fehler beim Parsen der CSV-Datei.');
-            return;
+      
+      const processData = (parsedData: Record<string, any>[], fields: string[]) => {
+         // Convert all values to strings to match PapaParse behavior
+         const stringData = parsedData.map(row => 
+            Object.entries(row).reduce((acc, [key, value]) => {
+                acc[key] = String(value ?? '');
+                return acc;
+            }, {} as Record<string, string>)
+        );
+        
+        setHeaders(fields);
+        setData(stringData);
+
+        // Auto-mapping
+        const newMapping: Record<string, string> = {};
+        fields.forEach((header: string) => {
+          const lowerHeader = header.toLowerCase();
+          const foundField = ALL_MAPPABLE_FIELDS.find(f => lowerHeader.includes(f.label.toLowerCase().split(' ')[0]));
+          if (foundField) {
+            newMapping[header] = foundField.key;
           }
-          setHeaders(results.meta.fields);
-          setData(results.data);
-          // Auto-mapping
-          const newMapping: Record<string, string> = {};
-          results.meta.fields.forEach((header: string) => {
-            const lowerHeader = header.toLowerCase();
-            const foundField = ALL_MAPPABLE_FIELDS.find(f => lowerHeader.includes(f.label.toLowerCase().split(' ')[0]));
-            if (foundField) {
-              newMapping[header] = foundField.key;
-            }
+        });
+        setMapping(newMapping);
+      };
+
+      if (selectedFile.name.endsWith('.csv')) {
+          Papa.parse(selectedFile, {
+            header: true,
+            skipEmptyLines: true,
+            complete: (results: any) => {
+              if (results.errors.length) {
+                setError('Fehler beim Parsen der CSV-Datei.');
+                return;
+              }
+              processData(results.data, results.meta.fields);
+            },
           });
-          setMapping(newMapping);
-        },
-      });
+      } else if (selectedFile.name.endsWith('.xlsx')) {
+          const reader = new FileReader();
+          reader.onload = (e) => {
+              try {
+                  const fileData = e.target?.result;
+                  const workbook = XLSX.read(fileData, { type: 'array' });
+                  const sheetName = workbook.SheetNames[0];
+                  const worksheet = workbook.Sheets[sheetName];
+                  const jsonData: Record<string, any>[] = XLSX.utils.sheet_to_json(worksheet, { defval: "" });
+
+                  if (jsonData.length === 0) {
+                      setError('Die Excel-Datei ist leer oder hat keine Kopfzeile.');
+                      return;
+                  }
+                  
+                  const fields = Object.keys(jsonData[0]);
+                  processData(jsonData, fields);
+
+              } catch (err) {
+                  console.error(err);
+                  setError('Fehler beim Parsen der Excel-Datei.');
+              }
+          };
+          reader.onerror = () => setError('Fehler beim Lesen der Datei.');
+          reader.readAsArrayBuffer(selectedFile);
+      } else {
+          setError('Bitte eine .csv oder .xlsx Datei auswählen.');
+      }
     }
   };
 
@@ -128,18 +172,18 @@ export const ParticipantImportModal: React.FC<ParticipantImportModalProps> = ({ 
 
         {/* Step 1: File Upload */}
         <div className="mb-6">
-            <label className="block text-sm font-medium text-gray-700 mb-2">1. CSV-Datei auswählen</label>
+            <label className="block text-sm font-medium text-gray-700 mb-2">1. CSV- oder Excel-Datei auswählen</label>
             <div className="mt-1 flex justify-center px-6 pt-5 pb-6 border-2 border-gray-300 border-dashed rounded-md">
                 <div className="space-y-1 text-center">
                     <UploadIcon className="mx-auto h-12 w-12 text-gray-400" />
                     <div className="flex text-sm text-gray-600">
                         <label htmlFor="file-upload" className="relative cursor-pointer bg-white rounded-md font-medium text-primary hover:text-primary-dark focus-within:outline-none">
                             <span>Datei hochladen</span>
-                            <input id="file-upload" name="file-upload" type="file" className="sr-only" onChange={handleFileChange} accept=".csv" />
+                            <input id="file-upload" name="file-upload" type="file" className="sr-only" onChange={handleFileChange} accept=".csv,.xlsx" />
                         </label>
                         <p className="pl-1">oder per Drag & Drop</p>
                     </div>
-                    <p className="text-xs text-gray-500">{file ? file.name : 'CSV bis 10MB'}</p>
+                    <p className="text-xs text-gray-500">{file ? file.name : 'CSV oder XLSX bis 10MB'}</p>
                 </div>
             </div>
         </div>

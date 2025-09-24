@@ -1,4 +1,4 @@
-import { Participant, Event, Result, Settings, Gender, PerfClass, GroupLabel } from '../types';
+import { Participant, Event, Result, Settings, Gender, PerfClass, GroupLabel, Team, TeamMember, EventType } from '../types';
 
 // Helper to determine a participant's group
 export const getParticipantGroup = (participant: Participant): GroupLabel => {
@@ -11,54 +11,223 @@ export const getParticipantGroup = (participant: Participant): GroupLabel => {
   return GroupLabel.Ambitious;
 };
 
-// Main scoring logic for an event
-export const calculateEventPoints = (
+// --- Specific Calculators ---
+
+const getPlacementPoints = (rank: number): number => {
+    if (rank <= 10) return 8;
+    if (rank <= 20) return 7;
+    if (rank <= 30) return 6;
+    return 5;
+};
+
+const calculateHandicap = (participant: Participant, result: Result, event: Event): number => {
+    let adjustment = 0;
+    const eventYear = event.season;
+    const age = eventYear - participant.birthYear;
+
+    // Gender
+    if (participant.gender === Gender.Female) adjustment -= 120;
+
+    // Age
+    if (age >= 60) adjustment -= 120; // Senioren 4
+    else if (age >= 50 && age <= 59) adjustment -= 90; // Senioren 3
+    else if (age >= 40 && age <= 49) adjustment -= 60; // Senioren 2
+
+    // Youth
+    if (age <= 18) adjustment -= 90; // Jugend
+
+    // Performance Class (Hobby)
+    if ([PerfClass.A, PerfClass.B].includes(participant.perfClass)) {
+        adjustment -= 45; // Hobby
+    }
+
+    // Material
+    if (result.hasAeroBars) adjustment += 30;
+    if (result.hasTTEquipment) adjustment += 30;
+
+    return adjustment;
+};
+
+
+const calculateTimeTrialPoints = (
+  event: Event,
   eventResults: Result[],
   participants: Participant[],
   settings: Settings
 ): Result[] => {
   const participantMap = new Map(participants.map(p => [p.id, p]));
 
-  // Create a structure with full participant data for sorting
-  const enrichedResults = eventResults
-    .filter(r => !r.dnf && r.timeSeconds != null)
-    .map(r => ({
-      ...r,
-      participant: participantMap.get(r.participantId),
-    }))
-    .filter(r => r.participant != null);
-
-  // Sort by time (ascending)
-  enrichedResults.sort((a, b) => (a.timeSeconds ?? Infinity) - (b.timeSeconds ?? Infinity));
-  
-  const updatedResults = new Map<string, Result>();
-  eventResults.forEach(r => updatedResults.set(r.id, {...r, points: r.dnf ? 0 : r.points}));
-
-  const getPlacementPoints = (rank: number) => {
-      if (rank <= 10) return 8;
-      if (rank <= 20) return 7;
-      if (rank <= 30) return 6;
-      return 5;
-  };
-
-  enrichedResults.forEach((result, index) => {
-      const rankOverall = index + 1;
-      
-      // Start with placement points based on overall rank
-      let points = getPlacementPoints(rankOverall);
-      
-      // Add winner bonus points if manually assigned
-      if (result.winnerRank && result.winnerRank <= settings.winnerPoints.length) {
-          points += settings.winnerPoints[result.winnerRank - 1];
-      }
-      
-      const originalResult = updatedResults.get(result.id);
-      if(originalResult) {
-          updatedResults.set(result.id, { ...originalResult, points, rankOverall });
-      }
+  // Step 1: Create a mutable map of all results. This ensures we return a result for every participant,
+  // including DNFs. DNFs get 0 points, finishers get a baseline of 1 point.
+  const finalResults = new Map<string, Result>();
+  eventResults.forEach(r => {
+    finalResults.set(r.id, { ...r, points: r.dnf ? 0 : 1, rankOverall: undefined });
   });
 
-  return Array.from(updatedResults.values());
+  // Step 2: Identify valid finishers, calculate their handicap-adjusted time, and sort them.
+  const rankedFinishers = eventResults
+    .filter(r => !r.dnf && r.timeSeconds != null && r.timeSeconds > 0)
+    .map(r => {
+      const participant = participantMap.get(r.participantId);
+      if (!participant) return null; // Exclude results for unknown participants from ranking
+
+      const handicap = calculateHandicap(participant, r, event);
+      const adjustedTimeSeconds = (r.timeSeconds || 0) + handicap;
+      return { ...r, adjustedTimeSeconds };
+    })
+    .filter((r): r is NonNullable<typeof r> => r !== null)
+    .sort((a, b) => a.adjustedTimeSeconds - b.adjustedTimeSeconds);
+
+  // Step 3: Iterate through the sorted finishers to assign placement points and rank.
+  rankedFinishers.forEach((rankedResult, index) => {
+    const rankOverall = index + 1;
+    let points = getPlacementPoints(rankOverall);
+
+    // Add bonus points for manually assigned winner ranks (1st, 2nd, 3rd)
+    if (rankedResult.winnerRank && rankedResult.winnerRank <= settings.winnerPoints.length) {
+      points += settings.winnerPoints[rankedResult.winnerRank - 1];
+    }
+
+    // Update the result in our map with the calculated points and rank.
+    // We destructure to remove the temporary 'adjustedTimeSeconds' property.
+    const { adjustedTimeSeconds, ...resultToUpdate } = rankedResult;
+    finalResults.set(resultToUpdate.id, { ...resultToUpdate, points, rankOverall });
+  });
+
+  // Step 4: Convert the map back to an array for the final output.
+  return Array.from(finalResults.values());
+};
+
+const calculateHandicapPoints = (
+    eventResults: Result[],
+    participants: Participant[],
+    settings: Settings
+): Result[] => {
+    const participantMap = new Map(participants.map(p => [p.id, p]));
+    const updatedResults: Result[] = [];
+
+    for (const result of eventResults) {
+        if (result.dnf) {
+            updatedResults.push({ ...result, points: 0 });
+            continue;
+        }
+
+        const participant = participantMap.get(result.participantId);
+        if (!participant) {
+            updatedResults.push({ ...result, points: 0 });
+            continue;
+        }
+
+        let points = 0;
+        const basePoints = settings.handicapBasePoints[participant.perfClass] || 0;
+
+        if (result.finisherGroup === 1) {
+            points = basePoints;
+        } else if (result.finisherGroup === 2) {
+            points = Math.max(1, basePoints - 1); // 1 point deduction for group 2
+        } else {
+             points = 1; // Finisher points if no group
+        }
+        updatedResults.push({ ...result, points });
+    }
+    return updatedResults;
+};
+
+const calculateTeamTimeTrialPoints = (
+    event: Event,
+    eventResults: Result[],
+    teams: Team[],
+    teamMembers: TeamMember[],
+    participants: Participant[],
+    settings: Settings
+): Result[] => {
+    const participantMap = new Map(participants.map(p => [p.id, p]));
+    const resultMap = new Map(eventResults.map(r => [r.participantId, r]));
+
+    const rankedTeams = teams.map(team => {
+        const members = teamMembers.filter(tm => tm.teamId === team.id);
+        const memberResults = members
+            .map(member => resultMap.get(member.participantId))
+            .filter((r): r is Result => r !== undefined && !r.dnf && r.timeSeconds != null && r.timeSeconds > 0);
+
+        if (memberResults.length < 2) { // Need at least 2 finishers for n-1 rule
+             return { ...team, adjustedTime: Infinity, memberIds: members.map(m => m.participantId) };
+        }
+
+        // Calculate total team handicap by summing up individual handicaps
+        const totalTeamHandicap = members.reduce((sum, member) => {
+            const participant = participantMap.get(member.participantId);
+            const result = resultMap.get(member.participantId);
+            if (participant && result) {
+                return sum + calculateHandicap(participant, result, event);
+            }
+            return sum;
+        }, 0);
+
+        // Find the n-1th rider's time (base time)
+        const sortedTimes = memberResults.map(r => r.timeSeconds!).sort((a, b) => a - b);
+        const relevantRiderIndex = Math.max(0, sortedTimes.length - 2); // n-1th rider for a team of size n is at index n-2
+        const baseTime = sortedTimes[relevantRiderIndex];
+
+        const adjustedTime = baseTime + totalTeamHandicap;
+        
+        return { ...team, adjustedTime, memberIds: members.map(m => m.participantId) };
+    }).sort((a, b) => a.adjustedTime - b.adjustedTime);
+
+    const teamPoints = new Map<string, number>();
+    rankedTeams.forEach((team, index) => {
+        if (team.adjustedTime === Infinity) return;
+        const rank = index + 1;
+        const points = getPlacementPoints(rank);
+        teamPoints.set(team.id, points);
+    });
+
+    const resultsByParticipant = new Map<string, Result>();
+    eventResults.forEach(r => resultsByParticipant.set(r.participantId, {...r, points: 0}));
+
+    for (const member of teamMembers) {
+        const teamId = member.teamId;
+        const participantId = member.participantId;
+        const result = resultsByParticipant.get(participantId);
+
+        if (result && !result.dnf) {
+            let points = teamPoints.get(teamId) || 1; // 1 finisher point if team didn't rank
+            if (member.penaltyMinus2) {
+                points = Math.max(0, points - 2);
+            }
+            resultsByParticipant.set(participantId, { ...result, points });
+        } else if (result && result.dnf) {
+            resultsByParticipant.set(participantId, { ...result, points: 0 });
+        }
+    }
+    return Array.from(resultsByParticipant.values());
+};
+
+// --- Main Dispatcher Function ---
+
+export const calculatePointsForEvent = (
+    event: Event,
+    eventResults: Result[],
+    participants: Participant[],
+    teams: Team[],
+    teamMembers: TeamMember[],
+    settings: Settings
+): Result[] => {
+    if (!event.finished) {
+        return eventResults.map(r => ({ ...r, points: 0, rankOverall: undefined }));
+    }
+
+    switch (event.eventType) {
+        case EventType.EZF:
+        case EventType.BZF:
+            return calculateTimeTrialPoints(event, eventResults, participants, settings);
+        case EventType.Handicap:
+            return calculateHandicapPoints(eventResults, participants, settings);
+        case EventType.MZF:
+            return calculateTeamTimeTrialPoints(event, eventResults, teams, teamMembers, participants, settings);
+        default:
+            return eventResults;
+    }
 };
 
 // --- Overall Standings Calculation ---

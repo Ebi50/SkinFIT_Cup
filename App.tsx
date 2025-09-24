@@ -1,9 +1,11 @@
 
 
+
+
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { Participant, Event, Result, Team, TeamMember, Settings, View, EventType } from './types';
 import { getMockParticipants, getMockEvents, getMockResults, getMockTeams, getMockTeamMembers, getInitialSettings } from './services/mockDataService';
-import { calculateEventPoints } from './services/scoringService';
+import { calculatePointsForEvent } from './services/scoringService';
 import { Standings } from './components/Standings';
 import { ParticipantsList } from './components/ParticipantsList';
 import { ParticipantImportModal } from './components/ParticipantImportModal';
@@ -68,20 +70,34 @@ const App: React.FC = () => {
   const [editingEvent, setEditingEvent] = useState<Event | undefined>(undefined);
 
   const recalculateAllPoints = useCallback(() => {
-    let allResultsUpdated = [...results];
-    const finishedTimeTrialEvents = events.filter(e => e.finished && (e.eventType === EventType.EZF || e.eventType === EventType.BZF));
-    
-    for (const event of finishedTimeTrialEvents) {
-      const eventResults = allResultsUpdated.filter(r => r.eventId === event.id);
-      const updatedEventResults = calculateEventPoints(eventResults, participants, settings);
-      
-      allResultsUpdated = allResultsUpdated.map(r => {
-        const updated = updatedEventResults.find(ur => ur.id === r.id);
-        return updated || r;
-      });
-    }
-    setResults(allResultsUpdated);
-  }, [events, participants, results, settings]);
+    setResults(currentResults => {
+        const finishedEvents = events.filter(e => e.finished);
+        if (finishedEvents.length === 0) return currentResults;
+
+        const unfinishedEventIds = new Set(events.filter(e => !e.finished).map(e => e.id));
+        let newResults = currentResults.filter(r => unfinishedEventIds.has(r.eventId));
+
+        for (const event of finishedEvents) {
+            const eventResults = currentResults.filter(r => r.eventId === event.id);
+            
+            const eventTeams = event.eventType === EventType.MZF ? teams.filter(t => t.eventId === event.id) : [];
+            const eventTeamIds = new Set(eventTeams.map(t => t.id));
+            const eventTeamMembers = event.eventType === EventType.MZF ? teamMembers.filter(tm => eventTeamIds.has(tm.teamId)) : [];
+
+            const updatedEventResults = calculatePointsForEvent(
+                event,
+                eventResults,
+                participants,
+                eventTeams,
+                eventTeamMembers,
+                settings
+            );
+            newResults = [...newResults, ...updatedEventResults];
+        }
+        
+        return newResults;
+    });
+  }, [events, participants, teams, teamMembers, settings]);
 
 
   useEffect(() => {
@@ -100,7 +116,7 @@ const App: React.FC = () => {
   }, []);
 
   useEffect(() => {
-    if (participants.length > 0 && events.length > 0 && results.length > 0) {
+    if (participants.length > 0 && events.length > 0) {
       recalculateAllPoints();
     }
   }, [participants, events, settings, recalculateAllPoints]);
@@ -166,13 +182,13 @@ const App: React.FC = () => {
       eventTeams: Team[],
       eventTeamMembers: TeamMember[]
   ) => {
+      // FIX: Removed redundant currentEventData variable and used eventData directly to fix typing issues.
       const isEditing = !!eventData.id;
       const eventId = eventData.id || `e${Date.now()}`;
 
       const originalEvent = isEditing ? events.find(e => e.id === eventData.id) : null;
       const season = originalEvent ? originalEvent.season : selectedSeason!;
       
-      // Construct the final event object with all required properties.
       const updatedEvent: Event = { ...eventData, id: eventId, season };
 
       if (isEditing) {
@@ -279,6 +295,8 @@ const App: React.FC = () => {
             eventResults={results.filter(r => r.eventId === editingEvent?.id)}
             eventTeams={teams.filter(t => t.eventId === editingEvent?.id)}
             eventTeamMembers={teamMembers.filter(tm => teams.some(t => t.id === tm.teamId && t.eventId === editingEvent?.id))}
+            // FIX: Pass settings to the modal
+            settings={settings}
         />
       )}
       {isNewSeasonModalOpen && (

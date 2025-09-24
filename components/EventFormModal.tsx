@@ -1,5 +1,6 @@
-import React, { useState } from 'react';
-import { Event, Participant, Result, Team, TeamMember, EventType } from '../types';
+import React, { useState, useEffect } from 'react';
+// FIX: Import Settings type
+import { Event, Participant, Result, Team, TeamMember, EventType, Settings } from '../types';
 import { CloseIcon, PlusIcon, TrashIcon, UsersIcon } from './icons';
 import { ParticipantSelectionModal } from './ParticipantSelectionModal';
 
@@ -11,12 +12,67 @@ interface EventFormModalProps {
     eventResults: Result[];
     eventTeams: Team[];
     eventTeamMembers: TeamMember[];
+    // FIX: Add settings to props
+    settings: Settings;
 }
 
 const generateId = () => `id_${Date.now()}_${Math.random().toString(16).slice(2)}`;
 
+
+// Internal component for displaying a single team member row in the MZF editor
+const TeamMemberRow: React.FC<{
+    member: TeamMember;
+    memberResult: Result;
+    onResultChange: (resultId: string, field: keyof Result, value: any) => void;
+    onMemberChange: (memberId: string, field: keyof TeamMember, value: any) => void;
+    onRemoveMember: (memberId: string) => void;
+    getParticipantName: (id: string) => string;
+}> = ({ member, memberResult, onResultChange, onMemberChange, onRemoveMember, getParticipantName }) => {
+    return (
+        <div className="grid grid-cols-12 gap-x-3 gap-y-2 items-center p-2 rounded bg-white border">
+            <div className="col-span-12 md:col-span-4 font-medium text-gray-800">
+                {getParticipantName(member.participantId)}
+            </div>
+            <div className="col-span-6 md:col-span-2">
+                <input
+                    type="number"
+                    placeholder="Zeit"
+                    value={memberResult.timeSeconds || ''}
+                    onChange={e => onResultChange(memberResult.id, 'timeSeconds', parseInt(e.target.value) || undefined)}
+                    className="w-full p-2 text-sm border border-gray-300 rounded-md"
+                />
+            </div>
+            <div className="col-span-6 md:col-span-3 space-y-1">
+                <div className="flex items-center text-xs">
+                    <input type="checkbox" id={`aero-${memberResult.id}`} checked={!!memberResult.hasAeroBars} onChange={(e) => onResultChange(memberResult.id, 'hasAeroBars', e.target.checked)} className="h-4 w-4 text-primary focus:ring-primary-dark border-gray-300 rounded"/>
+                    <label htmlFor={`aero-${memberResult.id}`} className="ml-2">Aufsatz (+30s)</label>
+                </div>
+                <div className="flex items-center text-xs">
+                    <input type="checkbox" id={`tt-${memberResult.id}`} checked={!!memberResult.hasTTEquipment} onChange={(e) => onResultChange(memberResult.id, 'hasTTEquipment', e.target.checked)} className="h-4 w-4 text-primary focus:ring-primary-dark border-gray-300 rounded"/>
+                    <label htmlFor={`tt-${memberResult.id}`} className="ml-2">Material (+30s)</label>
+                </div>
+            </div>
+            <div className="col-span-6 md:col-span-1 flex items-center">
+                <input
+                    type="checkbox"
+                    id={`penalty-${member.id}`}
+                    checked={member.penaltyMinus2}
+                    onChange={(e) => onMemberChange(member.id, 'penaltyMinus2', e.target.checked)}
+                    className="h-4 w-4 text-primary focus:ring-primary-dark border-gray-300 rounded"/>
+                <label htmlFor={`penalty-${member.id}`} className="ml-2 text-xs">Penalty</label>
+            </div>
+             <div className="col-span-4 md:col-span-1 flex items-center justify-center">
+                <input type="checkbox" id={`dnf-${memberResult.id}`} checked={!!memberResult.dnf} onChange={(e) => onResultChange(memberResult.id, 'dnf', e.target.checked)} className="h-5 w-5 text-primary focus:ring-primary-dark border-gray-300 rounded" />
+            </div>
+            <div className="col-span-2 md:col-span-1 text-right">
+                <button onClick={() => onRemoveMember(member.id)} className="text-red-500 hover:text-red-700 p-1" aria-label="Teammitglied entfernen"><TrashIcon className="w-4 h-4" /></button>
+            </div>
+        </div>
+    );
+};
+
 export const EventFormModal: React.FC<EventFormModalProps> = ({
-    onClose, onSave, event, allParticipants, eventResults, eventTeams, eventTeamMembers
+    onClose, onSave, event, allParticipants, eventResults, eventTeams, eventTeamMembers, settings
 }) => {
     const [formData, setFormData] = useState<Omit<Event, 'id' | 'season'>>({
         name: event?.name || '',
@@ -30,7 +86,34 @@ export const EventFormModal: React.FC<EventFormModalProps> = ({
     const [results, setResults] = useState<Result[]>(eventResults);
     const [teams, setTeams] = useState<Team[]>(eventTeams);
     const [teamMembers, setTeamMembers] = useState<TeamMember[]>(eventTeamMembers);
+    
     const [isParticipantSelectionOpen, setParticipantSelectionOpen] = useState(false);
+    const [targetTeamId, setTargetTeamId] = useState<string | null>(null);
+    
+    useEffect(() => {
+        if (formData.eventType === EventType.MZF) {
+            const teamMemberParticipantIds = new Set(teamMembers.map(tm => tm.participantId));
+            const resultsParticipantIds = new Set(results.map(r => r.participantId));
+            const missingResults: Result[] = [];
+            
+            teamMemberParticipantIds.forEach(participantId => {
+                if (!resultsParticipantIds.has(participantId)) {
+                    missingResults.push({
+                        id: generateId(),
+                        eventId: event?.id || '',
+                        participantId: participantId,
+                        dnf: false,
+                        points: 0,
+                    });
+                }
+            });
+
+            if (missingResults.length > 0) {
+                setResults(prev => [...prev, ...missingResults]);
+            }
+        }
+    }, [formData.eventType, teamMembers, results, event?.id]);
+
 
     const handleFormChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
         const { name, value, type } = e.target;
@@ -48,6 +131,7 @@ export const EventFormModal: React.FC<EventFormModalProps> = ({
             participantId: pid,
             dnf: false,
             points: 0,
+            finisherGroup: formData.eventType === EventType.Handicap ? 1 : undefined,
         }));
         setResults(prev => [...prev, ...newResults]);
     };
@@ -65,7 +149,6 @@ export const EventFormModal: React.FC<EventFormModalProps> = ({
             id: generateId(),
             eventId: event?.id || '',
             name: `Team ${teams.length + 1}`,
-            timeSeconds: 0,
         };
         setTeams(prev => [...prev, newTeam]);
     };
@@ -73,37 +156,59 @@ export const EventFormModal: React.FC<EventFormModalProps> = ({
     const handleTeamChange = (teamId: string, field: keyof Team, value: any) => {
         setTeams(prev => prev.map(t => t.id === teamId ? { ...t, [field]: value } : t));
     };
+    
+    const handleTeamMemberChange = (memberId: string, field: keyof TeamMember, value: any) => {
+        setTeamMembers(prev => prev.map(tm => tm.id === memberId ? { ...tm, [field]: value } : tm));
+    };
 
     const handleRemoveTeam = (teamId: string) => {
         setTeams(prev => prev.filter(t => t.id !== teamId));
         setTeamMembers(prev => prev.filter(tm => tm.teamId !== teamId));
     };
 
-    const handleAddTeamMember = (teamId: string) => {
-        const teamMemberIds = teamMembers.map(tm => tm.participantId);
-        const availableParticipants = allParticipants.filter(p => !teamMemberIds.includes(p.id));
-        if (availableParticipants.length > 0) {
-            const newMember: TeamMember = {
+    const handleOpenTeamMemberSelection = (teamId: string) => {
+        setTargetTeamId(teamId);
+        setParticipantSelectionOpen(true);
+    };
+
+    const handleAddMembersToTeam = (participantIds: string[]) => {
+        if (!targetTeamId) return;
+
+        const newMembers: TeamMember[] = participantIds.map(pid => ({
+            id: generateId(),
+            teamId: targetTeamId,
+            participantId: pid,
+            penaltyMinus2: false,
+        }));
+
+        const currentResultPids = new Set(results.map(r => r.participantId));
+        const newResults: Result[] = participantIds
+            .filter(pid => !currentResultPids.has(pid))
+            .map(pid => ({
                 id: generateId(),
-                teamId,
-                participantId: availableParticipants[0].id,
-                penaltyMinus2: false,
-            };
-            setTeamMembers(prev => [...prev, newMember]);
+                eventId: event?.id || '',
+                participantId: pid,
+                dnf: false,
+                points: 0,
+            }));
+        
+        setTeamMembers(prev => [...prev, ...newMembers]);
+        if (newResults.length > 0) {
+            setResults(prev => [...prev, ...newResults]);
         }
     };
     
-    const handleTeamMemberChange = (memberId: string, field: keyof TeamMember, value: any) => {
-        setTeamMembers(prev => prev.map(tm => tm.id === memberId ? { ...tm, [field]: value } : tm));
-    };
-
     const handleRemoveTeamMember = (memberId: string) => {
         setTeamMembers(prev => prev.filter(tm => tm.id !== memberId));
     };
 
+    const handleModalClose = () => {
+        setParticipantSelectionOpen(false);
+        setTargetTeamId(null);
+    };
+
     const handleSaveClick = () => {
         const eventId = event?.id;
-        // Ensure all entities have the correct eventId
         const finalResults = results.map(r => ({...r, eventId: eventId || ''}));
         const finalTeams = teams.map(t => ({...t, eventId: eventId || ''}));
 
@@ -116,81 +221,79 @@ export const EventFormModal: React.FC<EventFormModalProps> = ({
     }
 
     const renderResultsEditor = () => {
-        const isHandicap = formData.eventType === EventType.Handicap;
-        const isTimeTrial = formData.eventType === EventType.EZF || formData.eventType === EventType.BZF;
-        const currentParticipantIds = new Set(results.map(r => r.participantId));
+        const eventType = formData.eventType;
         const usedWinnerRanks = new Set(results.map(r => r.winnerRank).filter(Boolean));
         const winnerRanks: (1 | 2 | 3)[] = [1, 2, 3];
-
+    
         return (
             <div>
                 <h3 className="text-lg font-medium text-gray-800 mb-2">Ergebnisse</h3>
-                {results.map(result => {
-                    const participantsForDropdown = allParticipants
-                        .filter(p => !currentParticipantIds.has(p.id) || p.id === result.participantId)
-                        .sort((a,b) => a.lastName.localeCompare(b.lastName));
-                    
-                    return (
-                        <div key={result.id} className="grid grid-cols-12 gap-2 items-center mb-2 p-2 bg-gray-50 rounded">
-                            <div className="col-span-4">
-                                <select
-                                    value={result.participantId}
-                                    onChange={(e) => handleResultChange(result.id, 'participantId', e.target.value)}
-                                    className="w-full p-2 border border-gray-300 rounded-md"
-                                >
-                                    {participantsForDropdown.map(p => <option key={p.id} value={p.id}>{getParticipantName(p.id)}</option>)}
-                                </select>
-                            </div>
-                            <div className={isTimeTrial ? "col-span-2" : "col-span-5"}>
-                                <input
-                                    type="number"
-                                    placeholder={isHandicap ? "Gruppe" : "Zeit (sek)"}
-                                    value={isHandicap ? result.finisherGroup || '' : result.timeSeconds || ''}
-                                    onChange={(e) => handleResultChange(result.id, isHandicap ? 'finisherGroup' : 'timeSeconds', parseInt(e.target.value) || undefined)}
-                                    className="w-full p-2 border border-gray-300 rounded-md"
-                                />
-                            </div>
-                            {isTimeTrial && (
-                                <div className="col-span-3">
-                                    <select
-                                        value={result.winnerRank || 0}
-                                        onChange={(e) => {
-                                            const val = parseInt(e.target.value, 10);
-                                            handleResultChange(result.id, 'winnerRank', val === 0 ? undefined : val);
-                                        }}
-                                        className="w-full p-2 border border-gray-300 rounded-md"
-                                    >
+    
+                <div className="grid grid-cols-12 gap-2 items-center mb-2 px-2 text-sm font-semibold text-gray-600">
+                    <div className="col-span-12 md:col-span-4">Teilnehmer</div>
+                    {(eventType === EventType.EZF || eventType === EventType.BZF) && (
+                        <>
+                            <div className="col-span-4 md:col-span-2">Zeit (sek)</div>
+                            <div className="col-span-8 md:col-span-3">Material</div>
+                            <div className="col-span-6 md:col-span-2">Bonus-Rang</div>
+                        </>
+                    )}
+                    {eventType === EventType.Handicap && <div className="col-span-6 md:col-span-5">Zielgruppe</div>}
+                    <div className="col-span-4 md:col-span-1 text-center">DNF</div>
+                    <div className="col-span-2 md:col-span-1 text-right"></div>
+                </div>
+    
+                {results.map(result => (
+                    <div key={result.id} className="grid grid-cols-12 gap-2 items-center mb-2 p-2 bg-gray-50 rounded">
+                        <div className="col-span-12 md:col-span-4 font-medium">{getParticipantName(result.participantId)}</div>
+    
+                        {(eventType === EventType.EZF || eventType === EventType.BZF) && (
+                            <>
+                                <div className="col-span-4 md:col-span-2">
+                                    <input type="number" placeholder="Zeit" value={result.timeSeconds || ''} onChange={(e) => handleResultChange(result.id, 'timeSeconds', parseInt(e.target.value) || undefined)} className="w-full p-2 border border-gray-300 rounded-md"/>
+                                </div>
+                                <div className="col-span-8 md:col-span-3 space-y-1">
+                                    <div className="flex items-center text-xs">
+                                        <input type="checkbox" id={`aero-${result.id}`} checked={!!result.hasAeroBars} onChange={(e) => handleResultChange(result.id, 'hasAeroBars', e.target.checked)} className="h-4 w-4 text-primary focus:ring-primary-dark border-gray-300 rounded"/>
+                                        <label htmlFor={`aero-${result.id}`} className="ml-2">Lenkeraufsatz (+30s)</label>
+                                    </div>
+                                    <div className="flex items-center text-xs">
+                                        <input type="checkbox" id={`tt-${result.id}`} checked={!!result.hasTTEquipment} onChange={(e) => handleResultChange(result.id, 'hasTTEquipment', e.target.checked)} className="h-4 w-4 text-primary focus:ring-primary-dark border-gray-300 rounded"/>
+                                        <label htmlFor={`tt-${result.id}`} className="ml-2">Weiteres Material (+30s)</label>
+                                    </div>
+                                </div>
+                                <div className="col-span-6 md:col-span-2">
+                                    <select value={result.winnerRank || 0} onChange={(e) => handleResultChange(result.id, 'winnerRank', parseInt(e.target.value) === 0 ? undefined : parseInt(e.target.value) as (1|2|3))} className="w-full p-2 border border-gray-300 rounded-md">
                                         <option value={0}>Kein Bonus</option>
                                         {winnerRanks.map(rank => (
-                                            <option 
-                                                key={rank} 
-                                                value={rank}
-                                                disabled={usedWinnerRanks.has(rank) && result.winnerRank !== rank}
-                                            >
-                                                {rank}. Platz (+{4-rank} Pkt)
+                                            <option key={rank} value={rank} disabled={usedWinnerRanks.has(rank) && result.winnerRank !== rank}>
+                                                {rank}. Platz (+{settings.winnerPoints[rank - 1] || 0} Pkt)
                                             </option>
                                         ))}
                                     </select>
                                 </div>
-                            )}
-                            <div className="col-span-2 flex items-center">
-                                 <input
-                                    type="checkbox"
-                                    id={`dnf-${result.id}`}
-                                    checked={result.dnf}
-                                    onChange={(e) => handleResultChange(result.id, 'dnf', e.target.checked)}
-                                    className="h-4 w-4 text-primary focus:ring-primary-dark border-gray-300 rounded"
-                                />
-                                <label htmlFor={`dnf-${result.id}`} className="ml-2 block text-sm text-gray-900">DNF</label>
+                            </>
+                        )}
+                        {eventType === EventType.Handicap && (
+                            <div className="col-span-6 md:col-span-5">
+                                <select value={result.finisherGroup || 1} onChange={(e) => handleResultChange(result.id, 'finisherGroup', parseInt(e.target.value, 10) || undefined)} className="w-full p-2 border border-gray-300 rounded-md" aria-label="Zielgruppe auswählen">
+                                    <option value={1}>Zielgruppe 1 (kein Abzug)</option>
+                                    <option value={2}>Zielgruppe 2 (Punktabzug)</option>
+                                </select>
                             </div>
-                            <div className="col-span-1 text-right">
-                               <button onClick={() => handleRemoveResult(result.id)} className="text-red-500 hover:text-red-700 p-1"><TrashIcon/></button>
-                            </div>
+                        )}
+    
+                        <div className="col-span-4 md:col-span-1 flex items-center justify-center">
+                            <input type="checkbox" id={`dnf-${result.id}`} checked={result.dnf} onChange={(e) => handleResultChange(result.id, 'dnf', e.target.checked)} className="h-5 w-5 text-primary focus:ring-primary-dark border-gray-300 rounded" />
                         </div>
-                    );
-                })}
-                <button onClick={() => setParticipantSelectionOpen(true)} className="text-primary hover:text-primary-dark font-semibold py-2 px-4 rounded-lg border border-primary flex items-center space-x-2">
-                    <PlusIcon className="w-5 h-5"/> <span>Teilnehmer hinzufügen</span>
+    
+                        <div className="col-span-2 md:col-span-1 text-right">
+                            <button onClick={() => handleRemoveResult(result.id)} className="text-red-500 hover:text-red-700 p-1"><TrashIcon /></button>
+                        </div>
+                    </div>
+                ))}
+                <button onClick={() => setParticipantSelectionOpen(true)} className="text-primary hover:text-primary-dark font-semibold py-2 px-4 rounded-lg border border-primary flex items-center space-x-2 mt-2">
+                    <PlusIcon className="w-5 h-5" /> <span>Teilnehmer hinzufügen</span>
                 </button>
             </div>
         );
@@ -200,68 +303,55 @@ export const EventFormModal: React.FC<EventFormModalProps> = ({
         return (
             <div>
                 <h3 className="text-lg font-medium text-gray-800 mb-4">Teams & Ergebnisse</h3>
-                {teams.map(team => {
-                    const currentTeamMembers = teamMembers.filter(tm => tm.teamId === team.id);
-                    const assignedParticipantIds = teamMembers.map(tm => tm.participantId);
-                    const availableParticipants = allParticipants.filter(p => !assignedParticipantIds.includes(p.id));
+                <div className="space-y-4">
+                    {teams.map(team => {
+                        const currentTeamMembers = teamMembers.filter(tm => tm.teamId === team.id);
+                        
+                        return (
+                            <div key={team.id} className="p-4 border border-gray-200 rounded-lg bg-gray-50/50">
+                                <div className="flex justify-between items-center mb-4 pb-3 border-b border-gray-200">
+                                    <input type="text" value={team.name} onChange={e => handleTeamChange(team.id, 'name', e.target.value)} className="p-2 border border-gray-300 rounded-md font-semibold text-lg flex-grow" aria-label="Teamname"/>
+                                    <button onClick={() => handleRemoveTeam(team.id)} className="ml-4 text-red-500 hover:text-red-700 p-1" aria-label={`Team ${team.name} löschen`}>
+                                        <TrashIcon />
+                                    </button>
+                                </div>
+                                
+                                <div className="hidden md:grid grid-cols-12 gap-x-3 items-center px-2 pb-2 text-xs font-semibold text-gray-500 border-b mb-2">
+                                    <div className="col-span-4">Mitglied</div>
+                                    <div className="col-span-2">Zeit (s)</div>
+                                    <div className="col-span-3">Material-Handicap</div>
+                                    <div className="col-span-1">Penalty</div>
+                                    <div className="col-span-1 text-center">DNF</div>
+                                    <div className="col-span-1 text-right">Aktion</div>
+                                </div>
 
-                    return (
-                        <div key={team.id} className="mb-4 p-4 border border-gray-200 rounded-lg">
-                            <div className="grid grid-cols-3 gap-4 items-center mb-3">
-                                <input
-                                    type="text"
-                                    value={team.name}
-                                    onChange={e => handleTeamChange(team.id, 'name', e.target.value)}
-                                    className="col-span-1 p-2 border border-gray-300 rounded-md"
-                                />
-                                <input
-                                    type="number"
-                                    placeholder="Zeit (sek)"
-                                    value={team.timeSeconds || ''}
-                                    onChange={e => handleTeamChange(team.id, 'timeSeconds', parseInt(e.target.value) || 0)}
-                                    className="col-span-1 p-2 border border-gray-300 rounded-md"
-                                />
-                                <div className="col-span-1 text-right">
-                                    <button onClick={() => handleRemoveTeam(team.id)} className="text-red-500 hover:text-red-700 p-1"><TrashIcon/></button>
+                                <div className="space-y-3 mb-3">
+                                    {currentTeamMembers.map(member => {
+                                        const memberResult = results.find(r => r.participantId === member.participantId);
+                                        if (!memberResult) return null;
+
+                                        return (
+                                            <TeamMemberRow
+                                                key={member.id}
+                                                member={member}
+                                                memberResult={memberResult}
+                                                onResultChange={handleResultChange}
+                                                onMemberChange={handleTeamMemberChange}
+                                                onRemoveMember={handleRemoveTeamMember}
+                                                getParticipantName={getParticipantName}
+                                            />
+                                        );
+                                    })}
                                 </div>
+                                <button onClick={() => handleOpenTeamMemberSelection(team.id)} className="text-sm text-blue-600 hover:text-blue-800 font-semibold py-1 px-2 rounded-lg border border-blue-600 flex items-center space-x-1 hover:bg-blue-50">
+                                    <UsersIcon className="w-4 h-4" /> <span>Mitglieder hinzufügen</span>
+                                </button>
                             </div>
-                            
-                            <h4 className="text-sm font-semibold text-gray-600 mb-2 ml-1">Teammitglieder</h4>
-                            {currentTeamMembers.map(member => (
-                                <div key={member.id} className="grid grid-cols-12 gap-2 items-center mb-1">
-                                    <div className="col-span-6">
-                                        <select
-                                            value={member.participantId}
-                                            onChange={(e) => handleTeamMemberChange(member.id, 'participantId', e.target.value)}
-                                            className="w-full p-2 text-sm border border-gray-300 rounded-md"
-                                        >
-                                            <option value={member.participantId}>{getParticipantName(member.participantId)}</option>
-                                            {availableParticipants.map(p => <option key={p.id} value={p.id}>{getParticipantName(p.id)}</option>)}
-                                        </select>
-                                    </div>
-                                    <div className="col-span-5 flex items-center">
-                                        <input
-                                            type="checkbox"
-                                            id={`penalty-${member.id}`}
-                                            checked={member.penaltyMinus2}
-                                            onChange={(e) => handleTeamMemberChange(member.id, 'penaltyMinus2', e.target.checked)}
-                                            className="h-4 w-4 text-primary focus:ring-primary-dark border-gray-300 rounded"
-                                        />
-                                        <label htmlFor={`penalty-${member.id}`} className="ml-2 block text-sm text-gray-900">Penalty (-2)</label>
-                                    </div>
-                                    <div className="col-span-1 text-right">
-                                        <button onClick={() => handleRemoveTeamMember(member.id)} className="text-red-500 hover:text-red-700 p-1"><TrashIcon className="w-4 h-4" /></button>
-                                    </div>
-                                </div>
-                            ))}
-                             <button onClick={() => handleAddTeamMember(team.id)} className="mt-2 text-sm text-blue-600 hover:text-blue-800 font-semibold py-1 px-2 rounded-lg border border-blue-600 flex items-center space-x-1">
-                                <UsersIcon className="w-4 h-4"/> <span>Mitglied hinzufügen</span>
-                            </button>
-                        </div>
-                    );
-                })}
-                <button onClick={handleAddTeam} className="text-primary hover:text-primary-dark font-semibold py-2 px-4 rounded-lg border border-primary flex items-center space-x-2">
-                    <PlusIcon className="w-5 h-5"/> <span>Team hinzufügen</span>
+                        );
+                    })}
+                </div>
+                <button onClick={handleAddTeam} className="mt-4 text-primary hover:text-primary-dark font-semibold py-2 px-4 rounded-lg border border-primary flex items-center space-x-2 hover:bg-primary/10">
+                    <PlusIcon className="w-5 h-5" /> <span>Team hinzufügen</span>
                 </button>
             </div>
         );
@@ -269,7 +359,7 @@ export const EventFormModal: React.FC<EventFormModalProps> = ({
 
     return (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex justify-center items-center z-50">
-            <div className="bg-white rounded-xl shadow-2xl p-8 w-full max-w-4xl max-h-[90vh] overflow-y-auto">
+            <div className="bg-white rounded-xl shadow-2xl p-8 w-full max-w-5xl max-h-[90vh] overflow-y-auto">
                 <div className="flex justify-between items-center mb-6">
                     <h2 className="text-2xl font-bold text-secondary">{event ? 'Event bearbeiten' : 'Neues Event erstellen'}</h2>
                     <button onClick={onClose} className="text-gray-500 hover:text-gray-800"><CloseIcon /></button>
@@ -305,10 +395,14 @@ export const EventFormModal: React.FC<EventFormModalProps> = ({
             </div>
             {isParticipantSelectionOpen && (
                 <ParticipantSelectionModal
-                    onClose={() => setParticipantSelectionOpen(false)}
-                    onAddParticipants={handleAddParticipants}
+                    onClose={handleModalClose}
+                    onAddParticipants={targetTeamId ? handleAddMembersToTeam : handleAddParticipants}
                     allParticipants={allParticipants}
-                    alreadySelectedIds={results.map(r => r.participantId)}
+                    alreadySelectedIds={
+                        formData.eventType === EventType.MZF
+                            ? teamMembers.map(tm => tm.participantId)
+                            : results.map(r => r.participantId)
+                    }
                 />
             )}
         </div>

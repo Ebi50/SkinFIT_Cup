@@ -51,18 +51,19 @@ export interface Result {
   eventId: string;
   participantId: string;
   rankOverall?: number; // EZF/BZF
-  timeSeconds?: number; // EZF/BZF/MZF
+  timeSeconds?: number; // EZF/BZF/MZF individual time
   winnerRank?: 1 | 2 | 3; // Manually assigned rank for winner points
   finisherGroup?: number; // Handicap
   dnf: boolean;
   points: number;
+  hasAeroBars?: boolean; // TT-Lenkeraufsatz
+  hasTTEquipment?: boolean; // Weiteres Zeitfahrmaterial
 }
 
 export interface Team {
     id: string;
     eventId: string;
     name: string;
-    timeSeconds: number;
 }
 
 export interface TeamMember {
