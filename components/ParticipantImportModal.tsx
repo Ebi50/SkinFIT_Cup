@@ -1,3 +1,4 @@
+
 import React, { useState, useCallback, useMemo } from 'react';
 import { Participant, Settings, PerfClass, Gender, GroupLabel } from '../types';
 import { CloseIcon, UploadIcon } from './icons';
@@ -23,6 +24,10 @@ const PARTICIPANT_FIELDS: { key: ParticipantKey; label: string }[] = [
   { key: 'birthYear', label: 'Geburtsjahr' },
   { key: 'perfClass', label: 'Klasse (A/B/C/D)' },
   { key: 'gender', label: 'Geschlecht (m/w)' },
+  { key: 'isRsvMember', label: 'RSV Mitglied (ja/nein)' },
+  { key: 'club', label: 'Verein' },
+  { key: 'startNumber', label: 'Startnummer' },
+  { key: 'nationality', label: 'Nationalität' },
 ];
 
 // Additional fields that can come from the CSV
@@ -127,6 +132,9 @@ export const ParticipantImportModal: React.FC<ParticipantImportModalProps> = ({ 
         let perfClass = row[Object.keys(mapping).find(h => mapping[h] === 'perfClass') || '']?.toUpperCase();
         let gender = row[Object.keys(mapping).find(h => mapping[h] === 'gender') || '']?.toLowerCase();
         const group = row[Object.keys(mapping).find(h => mapping[h] === 'group') || ''];
+        
+        const isRsvMemberRaw = row[Object.keys(mapping).find(h => mapping[h] === 'isRsvMember') || '']?.toLowerCase() || '';
+        const isRsvMember = ['ja', 'yes', 'true', '1'].includes(isRsvMemberRaw);
 
         // Group mapping logic from spec
         if (group?.toLowerCase().includes('frau')) {
@@ -145,6 +153,10 @@ export const ParticipantImportModal: React.FC<ParticipantImportModalProps> = ({ 
             birthYear: parseInt(row[Object.keys(mapping).find(h => mapping[h] === 'birthYear') || ''], 10) || 0,
             perfClass: (Object.values(PerfClass).includes(perfClass as PerfClass) ? perfClass : PerfClass.B) as PerfClass,
             gender: (gender === 'm' || gender === 'w' ? gender : Gender.Male) as Gender,
+            isRsvMember: isRsvMember,
+            club: row[Object.keys(mapping).find(h => mapping[h] === 'club') || ''] || undefined,
+            startNumber: row[Object.keys(mapping).find(h => mapping[h] === 'startNumber') || ''] || undefined,
+            nationality: row[Object.keys(mapping).find(h => mapping[h] === 'nationality') || ''] || undefined,
         };
     }).filter(p => p.email); // Must have an email
 

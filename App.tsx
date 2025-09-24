@@ -1,4 +1,5 @@
 
+
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { Participant, Event, Result, Team, TeamMember, Settings, View, EventType } from './types';
 import { getMockParticipants, getMockEvents, getMockResults, getMockTeams, getMockTeamMembers, getInitialSettings } from './services/mockDataService';
@@ -40,7 +41,8 @@ const Sidebar: React.FC<{ activeView: View; setView: (view: View) => void }> = (
                 className={`w-full text-left flex items-center space-x-3 p-3 rounded-lg transition-colors duration-200 ${
                   activeView === item.view || (isDetailView && item.view === 'events')
                     ? 'bg-primary text-white font-semibold'
-                    : 'hover:bg-gray-700'
+                    // FIX: Updated the hover color for better contrast and consistency.
+                    : 'hover:bg-primary/20'
                 }`}
               >
                 {item.icon}
@@ -185,50 +187,65 @@ const App: React.FC = () => {
     setEventModalOpen(false);
   };
 
+  // FIX: Destructuring `eventData` resolves a TypeScript type inference issue.
+  // When an intersection type is spread within a closure (like `setEvents(prev => ...)`),
+  // its properties can be inferred as `unknown`, causing errors.
+  // By destructuring first, we create a plain object that can be spread safely.
   const handleSaveEvent = (
       eventData: Omit<Event, 'id' | 'season'> & { id?: string },
       eventResults: Result[],
       eventTeams: Team[],
       eventTeamMembers: TeamMember[]
   ) => {
-      // FIX: Removed redundant currentEventData variable and used eventData directly to fix typing issues.
       const isEditing = !!eventData.id;
       const eventId = eventData.id || `e${Date.now()}`;
 
-      const originalEvent = isEditing ? events.find(e => e.id === eventData.id) : null;
-      const season = originalEvent ? originalEvent.season : selectedSeason!;
+      // 1. Update Events state
+      setEvents(prevEvents => {
+        const originalEvent = isEditing ? prevEvents.find(e => e.id === eventData.id) : null;
+        const season = originalEvent ? originalEvent.season : selectedSeason!;
+        
+        const { id, ...baseEventData } = eventData;
+        const updatedEvent: Event = { ...baseEventData, id: eventId, season };
+
+        if (isEditing) {
+            return prevEvents.map(e => e.id === eventId ? updatedEvent : e);
+        } else {
+            return [...prevEvents, updatedEvent];
+        }
+      });
       
-      const updatedEvent: Event = { ...eventData, id: eventId, season };
-
-      if (isEditing) {
-          setEvents(events.map(e => e.id === eventId ? updatedEvent : e));
-      } else {
-          setEvents([...events, updatedEvent]);
-      }
-
+      // 2. Update Results state
       const finalEventResults = eventResults.map(r => ({ ...r, eventId }));
-      const finalEventTeams = eventTeams.map(t => ({ ...t, eventId }));
+      setResults(prevResults => [...prevResults.filter(r => r.eventId !== eventId), ...finalEventResults]);
+      
+      // 3. Update Teams and Team Members state.
+      // We must remove all old teams AND their members for this event, then add the new ones.
+      const oldTeamIdsForEvent = new Set(teams.filter(t => t.eventId === eventId).map(t => t.id));
+      
+      setTeamMembers(prevMembers => [
+          ...prevMembers.filter(tm => !oldTeamIdsForEvent.has(tm.teamId)),
+          ...eventTeamMembers
+      ]);
 
-      const otherResults = results.filter(r => r.eventId !== eventId);
-      const otherTeams = teams.filter(t => t.eventId !== eventId);
-      
-      const oldTeamIdsForEvent = teams.filter(t => t.eventId === eventId).map(t => t.id);
-      const otherTeamMembers = teamMembers.filter(tm => !oldTeamIdsForEvent.includes(tm.teamId));
-      
-      setResults([...otherResults, ...finalEventResults]);
-      setTeams([...otherTeams, ...finalEventTeams]);
-      setTeamMembers([...otherTeamMembers, ...eventTeamMembers]);
+      setTeams(prevTeams => {
+          const finalEventTeams = eventTeams.map(t => ({ ...t, eventId }));
+          return [...prevTeams.filter(t => t.eventId !== eventId), ...finalEventTeams];
+      });
       
       handleCloseEventModal();
   };
   
   const handleDeleteEvent = (eventId: string) => {
     if (window.confirm("Möchten Sie dieses Event und alle zugehörigen Ergebnisse wirklich löschen?")) {
-        setEvents(events.filter(e => e.id !== eventId));
-        setResults(results.filter(r => r.eventId !== eventId));
-        const eventTeamIds = teams.filter(t => t.eventId === eventId).map(t => t.id);
-        setTeams(teams.filter(t => t.eventId !== eventId));
-        setTeamMembers(teamMembers.filter(tm => !eventTeamIds.includes(tm.teamId)));
+        // Find the IDs of teams associated with this event from the current state.
+        const teamIdsToDelete = new Set(teams.filter(t => t.eventId === eventId).map(t => t.id));
+        
+        // Use functional updates to ensure atomicity and work with the latest state.
+        setEvents(prev => prev.filter(e => e.id !== eventId));
+        setResults(prev => prev.filter(r => r.eventId !== eventId));
+        setTeams(prev => prev.filter(t => t.eventId !== eventId));
+        setTeamMembers(prev => prev.filter(tm => !teamIdsToDelete.has(tm.teamId)));
     }
   };
 

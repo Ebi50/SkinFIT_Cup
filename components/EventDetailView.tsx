@@ -1,5 +1,6 @@
 
-import React, { useMemo } from 'react';
+
+import React, { useMemo, useState } from 'react';
 import { Event, Participant, Result, Team, TeamMember, Settings, EventType } from '../types';
 import { ArrowLeftIcon, CalendarIcon } from './icons';
 import { calculateHandicap } from '../services/scoringService';
@@ -25,6 +26,9 @@ const formatDate = (dateString: string) => new Intl.DateTimeFormat('de-DE', { da
 
 export const EventDetailView: React.FC<EventDetailViewProps> = ({ event, participants, results, teams, teamMembers, settings, onBack }) => {
     
+    const [filterStatus, setFilterStatus] = useState<'all' | 'finished' | 'dnf'>('all');
+    const [searchTerm, setSearchTerm] = useState('');
+
     const participantMap = useMemo(() => new Map(participants.map(p => [p.id, p])), [participants]);
     
     const getParticipantName = (id: string) => {
@@ -32,8 +36,19 @@ export const EventDetailView: React.FC<EventDetailViewProps> = ({ event, partici
         return p ? `${p.lastName}, ${p.firstName}` : 'Unbekannt';
     }
 
+    const filteredResults = useMemo(() => {
+        const searchTermLower = searchTerm.toLowerCase();
+        return results.filter(result => {
+            const participant = participantMap.get(result.participantId);
+            const nameMatch = participant ? `${participant.firstName} ${participant.lastName}`.toLowerCase().includes(searchTermLower) : false;
+            const statusMatch = filterStatus === 'all' || (filterStatus === 'finished' && !result.dnf) || (filterStatus === 'dnf' && result.dnf);
+            return nameMatch && statusMatch;
+        });
+    }, [results, searchTerm, filterStatus, participantMap]);
+
+
     const renderTimeTrialResults = () => {
-        const finishers = results
+        const finishers = filteredResults
             .filter(r => !r.dnf && participantMap.has(r.participantId))
             .map(r => {
                 const participant = participantMap.get(r.participantId)!;
@@ -43,7 +58,11 @@ export const EventDetailView: React.FC<EventDetailViewProps> = ({ event, partici
             })
             .sort((a, b) => a.adjustedTime - b.adjustedTime);
 
-        const dnfs = results.filter(r => r.dnf);
+        const dnfs = filteredResults.filter(r => r.dnf);
+
+        if (finishers.length === 0 && dnfs.length === 0) {
+            return <div className="p-4 text-center text-gray-500">Keine Ergebnisse für die aktuellen Filter gefunden.</div>;
+        }
 
         return (
              <table className="w-full text-left">
@@ -60,32 +79,65 @@ export const EventDetailView: React.FC<EventDetailViewProps> = ({ event, partici
                     {finishers.map((result, index) => (
                         <tr key={result.id} className="hover:bg-primary/10">
                             <td className="p-3 font-bold">{index + 1}.</td>
-                            <td className="p-3">{getParticipantName(result.participantId)}</td>
+                            <td className="p-3">
+                                {result.participant.startNumber && <span className="font-mono text-xs text-gray-500 mr-2">[#{result.participant.startNumber}]</span>}
+                                {getParticipantName(result.participantId)}
+                            </td>
                             <td className="p-3 font-mono text-center">{result.timeSeconds}s</td>
                             <td className="p-3 font-mono text-center font-semibold text-primary-dark">{result.adjustedTime.toFixed(0)}s</td>
                             <td className="p-3 font-mono text-right font-bold">{result.points}</td>
                         </tr>
                     ))}
-                    {dnfs.map(result => (
-                         <tr key={result.id} className="hover:bg-red-50 opacity-70">
-                            <td className="p-3 font-bold text-red-600">DNF</td>
-                            <td className="p-3">{getParticipantName(result.participantId)}</td>
-                            <td className="p-3 font-mono text-center">-</td>
-                            <td className="p-3 font-mono text-center">-</td>
-                            <td className="p-3 font-mono text-right font-bold">{result.points}</td>
-                        </tr>
-                    ))}
+                    {dnfs.map(result => {
+                         const participant = participantMap.get(result.participantId);
+                         return (
+                             <tr key={result.id} className="hover:bg-red-50 opacity-70">
+                                <td className="p-3 font-bold text-red-600">DNF</td>
+                                <td className="p-3">
+                                    {participant?.startNumber && <span className="font-mono text-xs text-gray-500 mr-2">[#{participant.startNumber}]</span>}
+                                    {getParticipantName(result.participantId)}
+                                </td>
+                                <td className="p-3 font-mono text-center">-</td>
+                                <td className="p-3 font-mono text-center">-</td>
+                                <td className="p-3 font-mono text-right font-bold">{result.points}</td>
+                            </tr>
+                         );
+                    })}
                 </tbody>
             </table>
         );
     };
 
     const renderMZFResults = () => {
-        const resultMap = new Map(results.map(r => [r.participantId, r]));
+        const resultMap: Map<string, Result> = new Map(results.map(r => [r.participantId, r]));
+        const searchTermLower = searchTerm.toLowerCase();
 
         const rankedTeams = teams.map(team => {
-            const members = teamMembers.filter(tm => tm.teamId === team.id);
-            const memberResults = members
+            let members = teamMembers.filter(tm => tm.teamId === team.id);
+
+            // Filter members if search term is active
+            if (searchTermLower) {
+                members = members.filter(member => {
+                    const p = participantMap.get(member.participantId);
+                    return p ? `${p.firstName} ${p.lastName}`.toLowerCase().includes(searchTermLower) : false;
+                });
+            }
+
+            // Filter by DNF status
+             if (filterStatus !== 'all') {
+                members = members.filter(member => {
+                    const result = resultMap.get(member.participantId);
+                    if (!result) return false;
+                    return (filterStatus === 'finished' && !result.dnf) || (filterStatus === 'dnf' && result.dnf);
+                });
+            }
+            
+            if (members.length === 0 && (searchTermLower || filterStatus !== 'all')) {
+                return null; // Don't show team if no members match filters
+            }
+
+            const memberResults = teamMembers
+                .filter(tm => tm.teamId === team.id) // Use original member list for calculation
                 .map(member => resultMap.get(member.participantId))
                 .filter((r): r is Result => r !== undefined && !r.dnf && r.timeSeconds != null && r.timeSeconds > 0);
 
@@ -104,8 +156,12 @@ export const EventDetailView: React.FC<EventDetailViewProps> = ({ event, partici
             const adjustedTime = baseTime + totalTeamHandicap;
             
             return { ...team, adjustedTime, members };
-        }).sort((a, b) => a.adjustedTime - b.adjustedTime);
+        }).filter((t): t is NonNullable<typeof t> => t !== null).sort((a, b) => a.adjustedTime - b.adjustedTime);
         
+         if (rankedTeams.length === 0) {
+            return <div className="p-4 text-center text-gray-500">Keine Ergebnisse für die aktuellen Filter gefunden.</div>;
+        }
+
         return (
             <div className="space-y-6">
                 {rankedTeams.map((team, index) => (
@@ -129,9 +185,13 @@ export const EventDetailView: React.FC<EventDetailViewProps> = ({ event, partici
                             <tbody>
                                 {team.members.map(member => {
                                     const result = resultMap.get(member.participantId);
+                                    const participant = participantMap.get(member.participantId);
                                     return (
                                         <tr key={member.id}>
-                                            <td className="p-2">{getParticipantName(member.participantId)}</td>
+                                            <td className="p-2">
+                                                {participant?.startNumber && <span className="font-mono text-xs text-gray-500 mr-2">[#{participant.startNumber}]</span>}
+                                                {getParticipantName(member.participantId)}
+                                            </td>
                                             <td className="p-2 text-center font-mono">{result?.timeSeconds ? `${result.timeSeconds}s` : '-'}</td>
                                             <td className="p-2 text-center font-semibold">{result?.dnf ? <span className="text-red-600">DNF</span> : 'Finisher'}</td>
                                             <td className="p-2 text-right font-mono font-bold">{result?.points ?? 0}</td>
@@ -147,8 +207,12 @@ export const EventDetailView: React.FC<EventDetailViewProps> = ({ event, partici
     }
     
     const renderHandicapResults = () => {
-        // Simple rank based on points for handicap events
-        const sortedResults = [...results].sort((a, b) => (b.points ?? 0) - (a.points ?? 0));
+        const sortedResults = [...filteredResults].sort((a, b) => (b.points ?? 0) - (a.points ?? 0));
+        
+        if (sortedResults.length === 0) {
+            return <div className="p-4 text-center text-gray-500">Keine Ergebnisse für die aktuellen Filter gefunden.</div>;
+        }
+
         return (
             <table className="w-full text-left">
                 <thead className="bg-gray-100">
@@ -160,14 +224,20 @@ export const EventDetailView: React.FC<EventDetailViewProps> = ({ event, partici
                     </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-200">
-                    {sortedResults.map((result, index) => (
-                        <tr key={result.id} className="hover:bg-primary/10">
-                            <td className="p-3 font-bold">{index + 1}.</td>
-                            <td className="p-3">{getParticipantName(result.participantId)}</td>
-                            <td className="p-3">{result.finisherGroup ? `Gruppe ${result.finisherGroup}` : '-'}</td>
-                            <td className="p-3 font-mono text-right font-bold">{result.points}</td>
-                        </tr>
-                    ))}
+                    {sortedResults.map((result, index) => {
+                        const participant = participantMap.get(result.participantId);
+                        return (
+                             <tr key={result.id} className="hover:bg-primary/10">
+                                <td className="p-3 font-bold">{index + 1}.</td>
+                                <td className="p-3">
+                                    {participant?.startNumber && <span className="font-mono text-xs text-gray-500 mr-2">[#{participant.startNumber}]</span>}
+                                    {getParticipantName(result.participantId)}
+                                </td>
+                                <td className="p-3">{result.finisherGroup ? `Gruppe ${result.finisherGroup}` : '-'}</td>
+                                <td className="p-3 font-mono text-right font-bold">{result.points}</td>
+                            </tr>
+                        );
+                    })}
                 </tbody>
             </table>
         );
@@ -190,6 +260,28 @@ export const EventDetailView: React.FC<EventDetailViewProps> = ({ event, partici
                 return <div>Ergebnisanzeige für diesen Event-Typ nicht implementiert.</div>;
         }
     };
+    
+    const FilterControls = () => (
+        <div className="mb-6 p-4 bg-gray-50 rounded-lg border flex flex-wrap items-center justify-between gap-4">
+            <div className="flex-grow min-w-[250px]">
+                <input
+                    type="text"
+                    placeholder="Teilnehmer suchen..."
+                    value={searchTerm}
+                    onChange={(e) => setSearchTerm(e.target.value)}
+                    className="w-full p-2 border border-gray-300 rounded-md shadow-sm"
+                />
+            </div>
+            <div className="flex items-center space-x-2">
+                <span className="text-sm font-medium text-gray-700">Status:</span>
+                <div className="flex rounded-md shadow-sm">
+                    <button onClick={() => setFilterStatus('all')} className={`px-4 py-2 text-sm font-medium border rounded-l-md ${filterStatus === 'all' ? 'bg-primary text-white border-primary-dark' : 'bg-white text-gray-700 hover:bg-gray-100'}`}>Alle</button>
+                    <button onClick={() => setFilterStatus('finished')} className={`px-4 py-2 text-sm font-medium border-t border-b ${filterStatus === 'finished' ? 'bg-primary text-white border-primary-dark' : 'bg-white text-gray-700 hover:bg-gray-100'}`}>Finisher</button>
+                    <button onClick={() => setFilterStatus('dnf')} className={`px-4 py-2 text-sm font-medium border rounded-r-md ${filterStatus === 'dnf' ? 'bg-primary text-white border-primary-dark' : 'bg-white text-gray-700 hover:bg-gray-100'}`}>DNF</button>
+                </div>
+            </div>
+        </div>
+    );
 
     return (
         <div>
@@ -219,6 +311,8 @@ export const EventDetailView: React.FC<EventDetailViewProps> = ({ event, partici
                     <p>{event.notes}</p>
                 </div>
             )}
+            
+            <FilterControls />
 
             <div className="bg-white rounded-xl shadow-lg overflow-hidden">
                 <div className="overflow-x-auto">

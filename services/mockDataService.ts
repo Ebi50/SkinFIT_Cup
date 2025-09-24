@@ -4,12 +4,12 @@ import { Participant, Event, Result, Team, TeamMember, Settings, EventType, Perf
 const generateId = () => Math.random().toString(36).substr(2, 9);
 
 export const getMockParticipants = (): Participant[] => [
-  { id: 'p1', firstName: 'Max', lastName: 'Mustermann', email: 'max@example.com', phone: '12345', birthYear: 1985, perfClass: PerfClass.C, gender: Gender.Male },
-  { id: 'p2', firstName: 'Erika', lastName: 'Musterfrau', email: 'erika@example.com', phone: '67890', birthYear: 1990, perfClass: PerfClass.B, gender: Gender.Female },
-  { id: 'p3', firstName: 'John', lastName: 'Doe', email: 'john@example.com', phone: '54321', birthYear: 1992, perfClass: PerfClass.A, gender: Gender.Male },
-  { id: 'p4', firstName: 'Jane', lastName: 'Smith', email: 'jane@example.com', phone: '09876', birthYear: 1988, perfClass: PerfClass.D, gender: Gender.Male },
-  { id: 'p5', firstName: 'Peter', lastName: 'Jones', email: 'peter@example.com', phone: '11223', birthYear: 1995, perfClass: PerfClass.B, gender: Gender.Male },
-  { id: 'p6', firstName: 'Maria', lastName: 'Garcia', email: 'maria@example.com', phone: '44556', birthYear: 1993, perfClass: PerfClass.C, gender: Gender.Female },
+  { id: 'p1', firstName: 'Max', lastName: 'Mustermann', email: 'max@example.com', phone: '12345', birthYear: 1985, perfClass: PerfClass.C, gender: Gender.Male, isRsvMember: true, club: 'RSV Beispiel', startNumber: '101', nationality: 'DE' },
+  { id: 'p2', firstName: 'Erika', lastName: 'Musterfrau', email: 'erika@example.com', phone: '67890', birthYear: 1990, perfClass: PerfClass.B, gender: Gender.Female, isRsvMember: true, club: 'Team Alpecin', startNumber: '102', nationality: 'AT' },
+  { id: 'p3', firstName: 'John', lastName: 'Doe', email: 'john@example.com', phone: '54321', birthYear: 1992, perfClass: PerfClass.A, gender: Gender.Male, isRsvMember: false, club: 'Cycling Pro', startNumber: '103', nationality: 'US' },
+  { id: 'p4', firstName: 'Jane', lastName: 'Smith', email: 'jane@example.com', phone: '09876', birthYear: 1988, perfClass: PerfClass.D, gender: Gender.Male, isRsvMember: true, club: 'RSV Beispiel', startNumber: '104', nationality: 'GB' },
+  { id: 'p5', firstName: 'Peter', lastName: 'Jones', email: 'peter@example.com', phone: '11223', birthYear: 1995, perfClass: PerfClass.B, gender: Gender.Male, isRsvMember: false, club: 'Team Alpecin', startNumber: '105', nationality: 'AU' },
+  { id: 'p6', firstName: 'Maria', lastName: 'Garcia', email: 'maria@example.com', phone: '44556', birthYear: 1993, perfClass: PerfClass.C, gender: Gender.Female, isRsvMember: true, club: 'Cycling Pro', startNumber: '106', nationality: 'ES' },
 ];
 
 export const getMockEvents = (): Event[] => [

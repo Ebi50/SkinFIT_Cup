@@ -1,4 +1,3 @@
-
 export enum EventType {
   EZF = 'EZF', // Einzelzeitfahren
   MZF = 'MZF', // Mannschaftszeitfahren
@@ -33,6 +32,10 @@ export interface Participant {
   birthYear: number;
   perfClass: PerfClass;
   gender: Gender;
+  isRsvMember: boolean;
+  club?: string;
+  startNumber?: string;
+  nationality?: string;
 }
 
 export interface Event {

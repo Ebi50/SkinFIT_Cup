@@ -23,8 +23,8 @@ const generateId = () => `id_${Date.now()}_${Math.random().toString(16).slice(2)
 const TeamMemberRow: React.FC<{
     member: TeamMember;
     memberResult: Result;
-    onResultChange: (resultId: string, field: keyof Result, value: any) => void;
-    onMemberChange: (memberId: string, field: keyof TeamMember, value: any) => void;
+    onResultChange: <K extends keyof Result>(resultId: string, field: K, value: Result[K]) => void;
+    onMemberChange: <K extends keyof TeamMember>(memberId: string, field: K, value: TeamMember[K]) => void;
     onRemoveMember: (memberId: string) => void;
     getParticipantName: (id: string) => string;
     handicap?: number;
@@ -38,8 +38,12 @@ const TeamMemberRow: React.FC<{
                 <input
                     type="number"
                     placeholder="Zeit"
-                    value={memberResult.timeSeconds || ''}
-                    onChange={e => onResultChange(memberResult.id, 'timeSeconds', parseInt(e.target.value) || undefined)}
+                    // FIX: The nullish coalescing operator (??) is used to handle `timeSeconds` being 0.
+                    // Using `|| ''` would incorrectly display an empty string for a time of 0 seconds.
+                    value={memberResult.timeSeconds ?? ''}
+                    // FIX: `parseInt` is called with a radix of 10 for correctness. The result is checked
+                    // for NaN to correctly handle empty input, and 0 is preserved as a valid value.
+                    onChange={e => { const num = parseInt(e.target.value, 10); onResultChange(memberResult.id, 'timeSeconds', isNaN(num) ? undefined : num); }}
                     className="w-full p-2 text-sm border border-gray-300 rounded-md"
                 />
             </div>
@@ -80,6 +84,8 @@ const TeamMemberRow: React.FC<{
 export const EventFormModal: React.FC<EventFormModalProps> = ({
     onClose, onSave, event, allParticipants, eventResults, eventTeams, eventTeamMembers, settings, selectedSeason
 }) => {
+    // FIX: Explicitly typing the `formData` state with `Omit<Event, 'id' | 'season'>`
+    // ensures type consistency and prevents potential inference errors.
     const [formData, setFormData] = useState<Omit<Event, 'id' | 'season'>>({
         name: event?.name || '',
         date: event?.date || new Date().toISOString().split('T')[0],
@@ -144,7 +150,9 @@ export const EventFormModal: React.FC<EventFormModalProps> = ({
         setResults(prev => [...prev, ...newResults]);
     };
     
-    const handleResultChange = (resultId: string, field: keyof Result, value: any) => {
+    // FIX: Using a generic type `<K extends keyof Result>` makes this handler
+    // fully type-safe, preventing incorrect field names or value types from being passed.
+    const handleResultChange = <K extends keyof Result>(resultId: string, field: K, value: Result[K]) => {
         setResults(prev => prev.map(r => r.id === resultId ? { ...r, [field]: value } : r));
     };
 
@@ -161,11 +169,15 @@ export const EventFormModal: React.FC<EventFormModalProps> = ({
         setTeams(prev => [...prev, newTeam]);
     };
 
-    const handleTeamChange = (teamId: string, field: keyof Team, value: any) => {
+    // FIX: Using a generic type `<K extends keyof Team>` makes this handler
+    // fully type-safe, preventing incorrect field names or value types from being passed.
+    const handleTeamChange = <K extends keyof Team>(teamId: string, field: K, value: Team[K]) => {
         setTeams(prev => prev.map(t => t.id === teamId ? { ...t, [field]: value } : t));
     };
     
-    const handleTeamMemberChange = (memberId: string, field: keyof TeamMember, value: any) => {
+    // FIX: Using a generic type `<K extends keyof TeamMember>` makes this handler
+    // fully type-safe, preventing incorrect field names or value types from being passed.
+    const handleTeamMemberChange = <K extends keyof TeamMember>(memberId: string, field: K, value: TeamMember[K]) => {
         setTeamMembers(prev => prev.map(tm => tm.id === memberId ? { ...tm, [field]: value } : tm));
     };
 
@@ -303,7 +315,7 @@ export const EventFormModal: React.FC<EventFormModalProps> = ({
                             {(eventType === EventType.EZF || eventType === EventType.BZF) && (
                                 <>
                                     <div className="col-span-2">
-                                        <input type="number" placeholder="Zeit" value={result.timeSeconds || ''} onChange={(e) => handleResultChange(result.id, 'timeSeconds', parseInt(e.target.value) || undefined)} className="w-full p-2 border border-gray-300 rounded-md"/>
+                                        <input type="number" placeholder="Zeit" value={result.timeSeconds ?? ''} onChange={(e) => { const num = parseInt(e.target.value, 10); handleResultChange(result.id, 'timeSeconds', isNaN(num) ? undefined : num); }} className="w-full p-2 border border-gray-300 rounded-md"/>
                                     </div>
                                     <div className="col-span-2">
                                         <input type="text" value={adjustedTime !== null ? `${adjustedTime.toFixed(0)}s` : '-'} readOnly className="w-full p-2 bg-gray-100 border-gray-200 rounded-md text-center font-semibold text-gray-700"/>
@@ -341,7 +353,7 @@ export const EventFormModal: React.FC<EventFormModalProps> = ({
         
                             <div className="col-span-1 flex items-center justify-around">
                                 <label htmlFor={`dnf-${result.id}`} className="text-xs text-gray-500 sr-only">DNF</label>
-                                <input title="Did Not Finish" type="checkbox" id={`dnf-${result.id}`} checked={result.dnf} onChange={(e) => handleResultChange(result.id, 'dnf', e.target.checked)} className="h-5 w-5 text-primary focus:ring-primary-dark border-gray-300 rounded" />
+                                <input title="Did Not Finish" type="checkbox" id={`dnf-${result.id}`} checked={!!result.dnf} onChange={(e) => handleResultChange(result.id, 'dnf', e.target.checked)} className="h-5 w-5 text-primary focus:ring-primary-dark border-gray-300 rounded" />
                                 <button onClick={() => handleRemoveResult(result.id)} className="text-red-500 hover:text-red-700 p-1"><TrashIcon className="w-4 h-4"/></button>
                             </div>
                         </div>
