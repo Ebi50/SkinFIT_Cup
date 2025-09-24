@@ -1,3 +1,4 @@
+
 import React, { useState } from 'react';
 import { Participant, PerfClass, Gender } from '../types';
 import { CloseIcon } from './icons';

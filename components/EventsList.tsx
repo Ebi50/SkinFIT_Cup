@@ -1,3 +1,4 @@
+
 import React from 'react';
 import { Event, EventType } from '../types';
 import { CalendarIcon, PlusIcon, PencilIcon, TrashIcon } from './icons';
@@ -7,6 +8,7 @@ interface EventsListProps {
   onNewEvent: () => void;
   onEditEvent: (event: Event) => void;
   onDeleteEvent: (eventId: string) => void;
+  onViewDetails: (eventId: string) => void;
 }
 
 const eventTypeLabels: Record<EventType, string> = {
@@ -28,7 +30,7 @@ const formatDate = (dateString: string) => {
   }
 };
 
-export const EventsList: React.FC<EventsListProps> = ({ events, onNewEvent, onEditEvent, onDeleteEvent }) => {
+export const EventsList: React.FC<EventsListProps> = ({ events, onNewEvent, onEditEvent, onDeleteEvent, onViewDetails }) => {
   return (
     <div>
       <div className="flex justify-between items-center mb-6">
@@ -60,7 +62,11 @@ export const EventsList: React.FC<EventsListProps> = ({ events, onNewEvent, onEd
             <tbody className="divide-y divide-gray-200">
               {events.map((event) => (
                 <tr key={event.id} className="hover:bg-primary/10">
-                  <td className="p-4 text-gray-800 font-medium">{event.name}</td>
+                  <td className="p-4 text-gray-800 font-medium">
+                     <button onClick={() => onViewDetails(event.id)} className="text-left text-primary hover:underline font-semibold">
+                       {event.name}
+                     </button>
+                  </td>
                   <td className="p-4 text-gray-700">{formatDate(event.date)}</td>
                   <td className="p-4 text-gray-700">{eventTypeLabels[event.eventType]}</td>
                   <td className="p-4">

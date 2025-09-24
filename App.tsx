@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { Participant, Event, Result, Team, TeamMember, Settings, View, EventType } from './types';
 import { getMockParticipants, getMockEvents, getMockResults, getMockTeams, getMockTeamMembers, getInitialSettings } from './services/mockDataService';
@@ -11,6 +12,8 @@ import { EventFormModal } from './components/EventFormModal';
 import { NewSeasonModal } from './components/NewSeasonModal';
 import { DashboardIcon, UsersIcon, CalendarIcon, ChartBarIcon, CogIcon } from './components/icons';
 import { SettingsView } from './components/SettingsView';
+import { Dashboard } from './components/Dashboard';
+import { EventDetailView } from './components/EventDetailView';
 
 const Sidebar: React.FC<{ activeView: View; setView: (view: View) => void }> = ({ activeView, setView }) => {
   const navItems = [
@@ -20,6 +23,8 @@ const Sidebar: React.FC<{ activeView: View; setView: (view: View) => void }> = (
     { view: 'standings', label: 'Gesamtwertung', icon: <ChartBarIcon /> },
     { view: 'settings', label: 'Einstellungen', icon: <CogIcon /> },
   ] as const;
+
+  const isDetailView = activeView === 'eventDetail';
 
   return (
     <div className="w-64 bg-secondary text-white p-5 flex flex-col h-screen fixed">
@@ -33,7 +38,7 @@ const Sidebar: React.FC<{ activeView: View; setView: (view: View) => void }> = (
               <button
                 onClick={() => setView(item.view)}
                 className={`w-full text-left flex items-center space-x-3 p-3 rounded-lg transition-colors duration-200 ${
-                  activeView === item.view
+                  activeView === item.view || (isDetailView && item.view === 'events')
                     ? 'bg-primary text-white font-semibold'
                     : 'hover:bg-gray-700'
                 }`}
@@ -69,6 +74,8 @@ const App: React.FC = () => {
 
   const [isParticipantModalOpen, setParticipantModalOpen] = useState(false);
   const [editingParticipant, setEditingParticipant] = useState<Participant | undefined>(undefined);
+  
+  const [selectedEventId, setSelectedEventId] = useState<string | null>(null);
 
 
   const recalculateAllPoints = useCallback(() => {
@@ -249,24 +256,63 @@ const App: React.FC = () => {
     };
 
     const handleSaveParticipant = (participantData: Participant) => {
-        if (participantData.id) {
-            setParticipants(participants.map(p => p.id === participantData.id ? participantData : p));
-        }
+        setParticipants(prevParticipants => 
+            prevParticipants.map(p => 
+                p.id === participantData.id ? participantData : p
+            )
+        );
         handleCloseParticipantModal();
+    };
+
+    const handleDeleteParticipant = (participantId: string) => {
+        if (window.confirm("Möchten Sie diesen Teilnehmer und alle zugehörigen Ergebnisse wirklich löschen? Dies kann nicht rückgängig gemacht werden.")) {
+            setParticipants(prev => prev.filter(p => p.id !== participantId));
+            setResults(prev => prev.filter(r => r.participantId !== participantId));
+            setTeamMembers(prev => prev.filter(tm => tm.participantId !== participantId));
+        }
+    };
+
+    const handleViewEvent = (eventId: string) => {
+        setSelectedEventId(eventId);
+        setView('eventDetail');
+    };
+
+    const handleBackToEventsList = () => {
+        setSelectedEventId(null);
+        setView('events');
     };
 
   const renderView = () => {
     switch (view) {
       case 'dashboard':
-        return <div className="text-gray-700">Willkommen beim Skinfit Cup! <br/>Verwaltungs- & Wertungsapp für die Saison <strong>{selectedSeason}</strong>. Wählen Sie einen Menüpunkt, um zu starten.</div>;
+        return <Dashboard selectedSeason={selectedSeason} />;
       case 'participants':
-        return <ParticipantsList participants={participants} onOpenImportModal={() => setImportModalOpen(true)} onEditParticipant={handleOpenParticipantModal} />;
+        return <ParticipantsList participants={participants} onOpenImportModal={() => setImportModalOpen(true)} onEditParticipant={handleOpenParticipantModal} onDeleteParticipant={handleDeleteParticipant} />;
       case 'events':
-        return <EventsList events={eventsForSeason} onNewEvent={() => handleOpenEventModal()} onEditEvent={handleOpenEventModal} onDeleteEvent={handleDeleteEvent} />;
+        return <EventsList events={eventsForSeason} onNewEvent={() => handleOpenEventModal()} onEditEvent={handleOpenEventModal} onDeleteEvent={handleDeleteEvent} onViewDetails={handleViewEvent} />;
       case 'standings':
         return <Standings participants={participants} events={eventsForSeason} results={resultsForSeason} settings={settings} />;
       case 'settings':
         return <SettingsView settings={settings} onSettingsChange={handleSettingsChange} />;
+       case 'eventDetail': {
+            const selectedEvent = events.find(e => e.id === selectedEventId);
+            if (!selectedEvent) return <div>Event nicht gefunden. <button onClick={handleBackToEventsList} className="text-primary underline">Zurück zur Übersicht</button></div>;
+            
+            const eventResults = results.filter(r => r.eventId === selectedEventId);
+            const eventTeams = teams.filter(t => t.eventId === selectedEventId);
+            const eventTeamIds = new Set(eventTeams.map(t => t.id));
+            const eventTeamMembers = teamMembers.filter(tm => eventTeamIds.has(tm.teamId));
+
+            return <EventDetailView 
+                        event={selectedEvent}
+                        participants={participants}
+                        results={eventResults}
+                        teams={eventTeams}
+                        teamMembers={eventTeamMembers}
+                        settings={settings}
+                        onBack={handleBackToEventsList} 
+                    />;
+        }
       default:
         return <div>Wählen Sie eine Ansicht</div>;
     }

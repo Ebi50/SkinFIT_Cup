@@ -1,17 +1,19 @@
+
 import React from 'react';
 import { Participant, Gender, PerfClass } from '../types';
-import { UploadIcon, UsersIcon, PencilIcon } from './icons';
+import { UploadIcon, UsersIcon, PencilIcon, TrashIcon } from './icons';
 
 interface ParticipantsListProps {
   participants: Participant[];
   onOpenImportModal: () => void;
   onEditParticipant: (participant: Participant) => void;
+  onDeleteParticipant: (participantId: string) => void;
 }
 
 const getGenderLabel = (gender: Gender) => (gender === Gender.Male ? 'Männlich' : 'Weiblich');
 const getPerfClassLabel = (perfClass: PerfClass) => `Klasse ${perfClass}`;
 
-export const ParticipantsList: React.FC<ParticipantsListProps> = ({ participants, onOpenImportModal, onEditParticipant }) => {
+export const ParticipantsList: React.FC<ParticipantsListProps> = ({ participants, onOpenImportModal, onEditParticipant, onDeleteParticipant }) => {
   return (
     <div>
       <div className="flex justify-between items-center mb-6">
@@ -54,6 +56,9 @@ export const ParticipantsList: React.FC<ParticipantsListProps> = ({ participants
                   <td className="p-4 text-right">
                     <button onClick={() => onEditParticipant(p)} className="text-blue-600 hover:text-blue-800 p-2" aria-label={`Teilnehmer ${p.firstName} ${p.lastName} bearbeiten`}>
                         <PencilIcon />
+                    </button>
+                    <button onClick={() => onDeleteParticipant(p.id)} className="text-red-600 hover:text-red-800 p-2 ml-2" aria-label={`Teilnehmer ${p.firstName} ${p.lastName} löschen`}>
+                        <TrashIcon />
                     </button>
                   </td>
                 </tr>

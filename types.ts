@@ -97,4 +97,4 @@ export interface Settings {
   }
 }
 
-export type View = 'dashboard' | 'participants' | 'events' | 'standings' | 'settings';
+export type View = 'dashboard' | 'participants' | 'events' | 'standings' | 'settings' | 'eventDetail';
