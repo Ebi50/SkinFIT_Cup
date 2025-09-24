@@ -52,7 +52,7 @@ export const ParticipantsList: React.FC<ParticipantsListProps> = ({ participants
                   <td className="p-4 text-gray-500">{p.phone}</td>
                   <td className="p-4 text-gray-500">{p.email}</td>
                   <td className="p-4 text-right">
-                    <button onClick={() => onEditParticipant(p)} className="text-blue-600 hover:text-blue-800 p-2">
+                    <button onClick={() => onEditParticipant(p)} className="text-blue-600 hover:text-blue-800 p-2" aria-label={`Teilnehmer ${p.firstName} ${p.lastName} bearbeiten`}>
                         <PencilIcon />
                     </button>
                   </td>

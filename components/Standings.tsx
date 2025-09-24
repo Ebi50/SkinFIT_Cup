@@ -1,5 +1,5 @@
 import React, { useMemo } from 'react';
-import { Participant, Event, Result, Settings, GroupLabel } from '../types';
+import { Participant, Event, Result, Settings, GroupLabel, EventType } from '../types';
 import { calculateOverallStandings, Standing } from '../services/scoringService';
 import { ChartBarIcon } from './icons';
 
@@ -16,6 +16,33 @@ interface StandingsTableProps {
   finishedEvents: Event[];
 }
 
+const getEventHeaderLabel = (event: Event): string => {
+  const date = new Intl.DateTimeFormat('de-DE', {
+    day: '2-digit',
+    month: '2-digit',
+  }).format(new Date(event.date));
+
+  let typeCode = '';
+  switch (event.eventType) {
+    case EventType.EZF:
+      typeCode = 'EZF';
+      break;
+    case EventType.BZF:
+      typeCode = 'BZF';
+      break;
+    case EventType.MZF:
+      typeCode = 'MZF';
+      break;
+    case EventType.Handicap:
+      typeCode = 'HC';
+      break;
+    default:
+      typeCode = event.eventType;
+  }
+  return `${date} ${typeCode}`;
+};
+
+
 const StandingsTable: React.FC<StandingsTableProps> = ({ title, standings, finishedEvents }) => (
   <div className="bg-white rounded-xl shadow-lg p-6 mb-8">
     <h3 className="text-2xl font-bold text-secondary mb-4 border-b-2 border-primary pb-2">{title}</h3>
@@ -25,9 +52,9 @@ const StandingsTable: React.FC<StandingsTableProps> = ({ title, standings, finis
           <tr>
             <th className="p-3 font-semibold text-sm text-gray-600 tracking-wider">Rang</th>
             <th className="p-3 font-semibold text-sm text-gray-600 tracking-wider min-w-[200px]">Name</th>
-            {finishedEvents.map((event, index) => (
+            {finishedEvents.map((event) => (
               <th key={event.id} className="p-3 font-semibold text-sm text-gray-600 tracking-wider text-center" title={event.name}>
-                {`Rennen ${index + 1}`}
+                {getEventHeaderLabel(event)}
               </th>
             ))}
             <th className="p-3 font-semibold text-sm text-gray-600 tracking-wider text-right">Gesamt</th>
