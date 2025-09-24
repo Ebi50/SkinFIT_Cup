@@ -38,7 +38,10 @@ export const getMockTeams = (): Team[] => [];
 export const getMockTeamMembers = (): TeamMember[] => [];
 
 export const getInitialSettings = (): Settings => ({
-  timeBonuses: {},
+  timeTrialBonuses: {
+    aeroBars: { enabled: true, seconds: 30 },
+    ttEquipment: { enabled: true, seconds: 30 },
+  },
   winnerPoints: [3, 2, 1],
   handicapBasePoints: {
     [PerfClass.A]: 10,

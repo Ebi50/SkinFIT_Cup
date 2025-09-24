@@ -20,7 +20,7 @@ const getPlacementPoints = (rank: number): number => {
     return 5;
 };
 
-const calculateHandicap = (participant: Participant, result: Result, event: Event): number => {
+export const calculateHandicap = (participant: Participant, result: Result, event: Event, settings: Settings): number => {
     let adjustment = 0;
     const eventYear = event.season;
     const age = eventYear - participant.birthYear;
@@ -42,8 +42,12 @@ const calculateHandicap = (participant: Participant, result: Result, event: Even
     }
 
     // Material
-    if (result.hasAeroBars) adjustment += 30;
-    if (result.hasTTEquipment) adjustment += 30;
+    if (settings.timeTrialBonuses.aeroBars.enabled && result.hasAeroBars) {
+      adjustment += settings.timeTrialBonuses.aeroBars.seconds;
+    }
+    if (settings.timeTrialBonuses.ttEquipment.enabled && result.hasTTEquipment) {
+      adjustment += settings.timeTrialBonuses.ttEquipment.seconds;
+    }
 
     return adjustment;
 };
@@ -71,7 +75,7 @@ const calculateTimeTrialPoints = (
       const participant = participantMap.get(r.participantId);
       if (!participant) return null; // Exclude results for unknown participants from ranking
 
-      const handicap = calculateHandicap(participant, r, event);
+      const handicap = calculateHandicap(participant, r, event, settings);
       const adjustedTimeSeconds = (r.timeSeconds || 0) + handicap;
       return { ...r, adjustedTimeSeconds };
     })
@@ -159,7 +163,7 @@ const calculateTeamTimeTrialPoints = (
             const participant = participantMap.get(member.participantId);
             const result = resultMap.get(member.participantId);
             if (participant && result) {
-                return sum + calculateHandicap(participant, result, event);
+                return sum + calculateHandicap(participant, result, event, settings);
             }
             return sum;
         }, 0);

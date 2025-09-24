@@ -20,11 +20,16 @@ export const ParticipantSelectionModal: React.FC<ParticipantSelectionModalProps>
 
     const availableParticipants = useMemo(() => {
         const alreadySelected = new Set(alreadySelectedIds);
+        const searchTermLower = searchTerm.toLowerCase();
+
         return allParticipants
             .filter(p => !alreadySelected.has(p.id))
-            .filter(p =>
-                `${p.firstName} ${p.lastName}`.toLowerCase().includes(searchTerm.toLowerCase())
-            )
+            .filter(p => {
+                if (!searchTermLower) return true; // Show all if search is empty
+                const fullName = `${p.firstName} ${p.lastName}`.toLowerCase();
+                const reversedFullName = `${p.lastName} ${p.firstName}`.toLowerCase();
+                return fullName.includes(searchTermLower) || reversedFullName.includes(searchTermLower);
+            })
             .sort((a, b) => a.lastName.localeCompare(b.lastName));
     }, [allParticipants, alreadySelectedIds, searchTerm]);
 
@@ -69,7 +74,7 @@ export const ParticipantSelectionModal: React.FC<ParticipantSelectionModalProps>
                 <div className="mb-4">
                     <input
                         type="text"
-                        placeholder="Suchen..."
+                        placeholder="Suchen nach Vor- oder Nachname..."
                         value={searchTerm}
                         onChange={e => setSearchTerm(e.target.value)}
                         className="w-full p-2 border border-gray-300 rounded-md"

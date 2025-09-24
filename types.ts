@@ -71,10 +71,23 @@ export interface TeamMember {
     teamId: string;
     participantId: string;
     penaltyMinus2: boolean;
+    // MZF individual results are now part of the main Result type
+    // timeSeconds?: number;
+    // dnf?: boolean;
+    // hasAeroBars?: boolean;
+    // hasTTEquipment?: boolean;
+}
+
+export interface MaterialHandicapSetting {
+    enabled: boolean;
+    seconds: number;
 }
 
 export interface Settings {
-  timeBonuses: Record<string, number>; // Placeholder for potential bonuses
+  timeTrialBonuses: {
+      aeroBars: MaterialHandicapSetting;
+      ttEquipment: MaterialHandicapSetting;
+  };
   winnerPoints: number[]; // e.g., [3, 2, 1] for top 3
   handicapBasePoints: Record<PerfClass, number>; // Points for class A-D
   dropScores: number; // N Streichergebnisse

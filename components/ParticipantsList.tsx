@@ -1,16 +1,17 @@
 import React from 'react';
 import { Participant, Gender, PerfClass } from '../types';
-import { UploadIcon, UsersIcon } from './icons';
+import { UploadIcon, UsersIcon, PencilIcon } from './icons';
 
 interface ParticipantsListProps {
   participants: Participant[];
   onOpenImportModal: () => void;
+  onEditParticipant: (participant: Participant) => void;
 }
 
 const getGenderLabel = (gender: Gender) => (gender === Gender.Male ? 'Männlich' : 'Weiblich');
 const getPerfClassLabel = (perfClass: PerfClass) => `Klasse ${perfClass}`;
 
-export const ParticipantsList: React.FC<ParticipantsListProps> = ({ participants, onOpenImportModal }) => {
+export const ParticipantsList: React.FC<ParticipantsListProps> = ({ participants, onOpenImportModal, onEditParticipant }) => {
   return (
     <div>
       <div className="flex justify-between items-center mb-6">
@@ -36,7 +37,9 @@ export const ParticipantsList: React.FC<ParticipantsListProps> = ({ participants
                 <th className="p-4 font-semibold text-sm text-gray-600 tracking-wider">Jahrgang</th>
                 <th className="p-4 font-semibold text-sm text-gray-600 tracking-wider">Klasse</th>
                 <th className="p-4 font-semibold text-sm text-gray-600 tracking-wider">Geschlecht</th>
+                <th className="p-4 font-semibold text-sm text-gray-600 tracking-wider">Telefon</th>
                 <th className="p-4 font-semibold text-sm text-gray-600 tracking-wider">E-Mail</th>
+                <th className="p-4 font-semibold text-sm text-gray-600 tracking-wider text-right">Aktionen</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-200">
@@ -46,12 +49,18 @@ export const ParticipantsList: React.FC<ParticipantsListProps> = ({ participants
                   <td className="p-4 text-gray-700">{p.birthYear}</td>
                   <td className="p-4 text-gray-700">{getPerfClassLabel(p.perfClass)}</td>
                   <td className="p-4 text-gray-700">{getGenderLabel(p.gender)}</td>
+                  <td className="p-4 text-gray-500">{p.phone}</td>
                   <td className="p-4 text-gray-500">{p.email}</td>
+                  <td className="p-4 text-right">
+                    <button onClick={() => onEditParticipant(p)} className="text-blue-600 hover:text-blue-800 p-2">
+                        <PencilIcon />
+                    </button>
+                  </td>
                 </tr>
               ))}
               {participants.length === 0 && (
                 <tr>
-                  <td colSpan={5} className="p-4 text-center text-gray-500">
+                  <td colSpan={7} className="p-4 text-center text-gray-500">
                     Keine Teilnehmer vorhanden. Starten Sie mit dem Import.
                   </td>
                 </tr>

@@ -1,7 +1,3 @@
-
-
-
-
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { Participant, Event, Result, Team, TeamMember, Settings, View, EventType } from './types';
 import { getMockParticipants, getMockEvents, getMockResults, getMockTeams, getMockTeamMembers, getInitialSettings } from './services/mockDataService';
@@ -9,10 +5,12 @@ import { calculatePointsForEvent } from './services/scoringService';
 import { Standings } from './components/Standings';
 import { ParticipantsList } from './components/ParticipantsList';
 import { ParticipantImportModal } from './components/ParticipantImportModal';
+import { ParticipantFormModal } from './components/ParticipantFormModal';
 import { EventsList } from './components/EventsList';
 import { EventFormModal } from './components/EventFormModal';
 import { NewSeasonModal } from './components/NewSeasonModal';
 import { DashboardIcon, UsersIcon, CalendarIcon, ChartBarIcon, CogIcon } from './components/icons';
+import { SettingsView } from './components/SettingsView';
 
 const Sidebar: React.FC<{ activeView: View; setView: (view: View) => void }> = ({ activeView, setView }) => {
   const navItems = [
@@ -68,6 +66,10 @@ const App: React.FC = () => {
   const [isImportModalOpen, setImportModalOpen] = useState(false);
   const [isEventModalOpen, setEventModalOpen] = useState(false);
   const [editingEvent, setEditingEvent] = useState<Event | undefined>(undefined);
+
+  const [isParticipantModalOpen, setParticipantModalOpen] = useState(false);
+  const [editingParticipant, setEditingParticipant] = useState<Participant | undefined>(undefined);
+
 
   const recalculateAllPoints = useCallback(() => {
     setResults(currentResults => {
@@ -232,18 +234,39 @@ const App: React.FC = () => {
     setNewSeasonModalOpen(false);
   };
 
+  const handleSettingsChange = (newSettings: Settings) => {
+    setSettings(newSettings);
+  };
+
+    const handleOpenParticipantModal = (participant: Participant) => {
+        setEditingParticipant(participant);
+        setParticipantModalOpen(true);
+    };
+
+    const handleCloseParticipantModal = () => {
+        setEditingParticipant(undefined);
+        setParticipantModalOpen(false);
+    };
+
+    const handleSaveParticipant = (participantData: Participant) => {
+        if (participantData.id) {
+            setParticipants(participants.map(p => p.id === participantData.id ? participantData : p));
+        }
+        handleCloseParticipantModal();
+    };
+
   const renderView = () => {
     switch (view) {
       case 'dashboard':
         return <div className="text-gray-700">Willkommen beim Skinfit Cup! <br/>Verwaltungs- & Wertungsapp für die Saison <strong>{selectedSeason}</strong>. Wählen Sie einen Menüpunkt, um zu starten.</div>;
       case 'participants':
-        return <ParticipantsList participants={participants} onOpenImportModal={() => setImportModalOpen(true)} />;
+        return <ParticipantsList participants={participants} onOpenImportModal={() => setImportModalOpen(true)} onEditParticipant={handleOpenParticipantModal} />;
       case 'events':
         return <EventsList events={eventsForSeason} onNewEvent={() => handleOpenEventModal()} onEditEvent={handleOpenEventModal} onDeleteEvent={handleDeleteEvent} />;
       case 'standings':
         return <Standings participants={participants} events={eventsForSeason} results={resultsForSeason} settings={settings} />;
       case 'settings':
-        return <div className="text-gray-700">Einstellungen (noch nicht implementiert).</div>;
+        return <SettingsView settings={settings} onSettingsChange={handleSettingsChange} />;
       default:
         return <div>Wählen Sie eine Ansicht</div>;
     }
@@ -286,7 +309,7 @@ const App: React.FC = () => {
           settings={settings}
         />
       )}
-      {isEventModalOpen && (
+      {isEventModalOpen && selectedSeason && (
         <EventFormModal
             onClose={handleCloseEventModal}
             onSave={handleSaveEvent}
@@ -295,8 +318,8 @@ const App: React.FC = () => {
             eventResults={results.filter(r => r.eventId === editingEvent?.id)}
             eventTeams={teams.filter(t => t.eventId === editingEvent?.id)}
             eventTeamMembers={teamMembers.filter(tm => teams.some(t => t.id === tm.teamId && t.eventId === editingEvent?.id))}
-            // FIX: Pass settings to the modal
             settings={settings}
+            selectedSeason={selectedSeason}
         />
       )}
       {isNewSeasonModalOpen && (
@@ -304,6 +327,13 @@ const App: React.FC = () => {
             onClose={() => setNewSeasonModalOpen(false)}
             onSave={handleCreateSeason}
             existingSeasons={availableSeasons}
+        />
+      )}
+       {isParticipantModalOpen && editingParticipant && (
+        <ParticipantFormModal
+            onClose={handleCloseParticipantModal}
+            onSave={handleSaveParticipant}
+            participant={editingParticipant}
         />
       )}
     </div>
