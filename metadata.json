@@ -1,0 +1,5 @@
+{
+  "name": "Skinfit Cup Verwaltungs- & Wertungsapp",
+  "description": "Eine Administrations-App zur Verwaltung und Auswertung von Vereinsmeisterschaften im Radsport, inklusive Teilnehmer-, Event- und Ergebnismanagement sowie automatischer Punkteberechnung und Gesamtwertung.",
+  "requestFramePermissions": []
+}

@@ -1,0 +1,65 @@
+import React from 'react';
+import { Participant, Gender, PerfClass } from '../types';
+import { UploadIcon, UsersIcon } from './icons';
+
+interface ParticipantsListProps {
+  participants: Participant[];
+  onOpenImportModal: () => void;
+}
+
+const getGenderLabel = (gender: Gender) => (gender === Gender.Male ? 'Männlich' : 'Weiblich');
+const getPerfClassLabel = (perfClass: PerfClass) => `Klasse ${perfClass}`;
+
+export const ParticipantsList: React.FC<ParticipantsListProps> = ({ participants, onOpenImportModal }) => {
+  return (
+    <div>
+      <div className="flex justify-between items-center mb-6">
+        <div className="flex items-center space-x-3">
+          <UsersIcon />
+          <h1 className="text-3xl font-bold text-secondary">Teilnehmer</h1>
+        </div>
+        <button
+          onClick={onOpenImportModal}
+          className="bg-primary hover:bg-primary-dark text-white font-bold py-2 px-4 rounded-lg flex items-center space-x-2 transition-transform transform hover:scale-105"
+        >
+          <UploadIcon className="w-5 h-5" />
+          <span>Importieren</span>
+        </button>
+      </div>
+
+      <div className="bg-white rounded-xl shadow-lg overflow-hidden">
+        <div className="overflow-x-auto">
+          <table className="w-full text-left">
+            <thead className="bg-gray-100">
+              <tr>
+                <th className="p-4 font-semibold text-sm text-gray-600 tracking-wider">Name</th>
+                <th className="p-4 font-semibold text-sm text-gray-600 tracking-wider">Jahrgang</th>
+                <th className="p-4 font-semibold text-sm text-gray-600 tracking-wider">Klasse</th>
+                <th className="p-4 font-semibold text-sm text-gray-600 tracking-wider">Geschlecht</th>
+                <th className="p-4 font-semibold text-sm text-gray-600 tracking-wider">E-Mail</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-200">
+              {participants.map((p) => (
+                <tr key={p.id} className="hover:bg-primary/10">
+                  <td className="p-4 text-gray-800 font-medium">{p.lastName}, {p.firstName}</td>
+                  <td className="p-4 text-gray-700">{p.birthYear}</td>
+                  <td className="p-4 text-gray-700">{getPerfClassLabel(p.perfClass)}</td>
+                  <td className="p-4 text-gray-700">{getGenderLabel(p.gender)}</td>
+                  <td className="p-4 text-gray-500">{p.email}</td>
+                </tr>
+              ))}
+              {participants.length === 0 && (
+                <tr>
+                  <td colSpan={5} className="p-4 text-center text-gray-500">
+                    Keine Teilnehmer vorhanden. Starten Sie mit dem Import.
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  );
+};
