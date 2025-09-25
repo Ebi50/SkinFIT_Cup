@@ -84,8 +84,9 @@ const TeamMemberRow: React.FC<{
 export const EventFormModal: React.FC<EventFormModalProps> = ({
     onClose, onSave, event, allParticipants, eventResults, eventTeams, eventTeamMembers, settings, selectedSeason
 }) => {
-    // FIX: Re-added explicit Omit type for robust type safety and to fix downstream inference issues.
-    const [formData, setFormData] = useState<Omit<Event, 'id' | 'season'>>({
+    // FIX: Removed explicit Omit type to let TypeScript infer a simpler structural type, 
+    // avoiding downstream type inference issues that were causing 'unknown' types.
+    const [formData, setFormData] = useState({
         name: event?.name || '',
         date: event?.date || new Date().toISOString().split('T')[0],
         location: event?.location || '',
