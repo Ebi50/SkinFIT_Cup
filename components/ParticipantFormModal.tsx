@@ -1,4 +1,5 @@
 
+
 import React, { useState } from 'react';
 import { Participant, PerfClass, Gender } from '../types';
 import { CloseIcon } from './icons';
@@ -56,20 +57,6 @@ export const ParticipantFormModal: React.FC<ParticipantFormModalProps> = ({ onCl
                     <div>
                         <label htmlFor="phone" className="block text-sm font-medium text-gray-700">Telefon</label>
                         <input type="tel" id="phone" name="phone" value={formData.phone} onChange={handleChange} className="mt-1 p-2 border border-gray-300 rounded-md w-full" />
-                    </div>
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        <div>
-                            <label htmlFor="club" className="block text-sm font-medium text-gray-700">Verein</label>
-                            <input type="text" id="club" name="club" value={formData.club || ''} onChange={handleChange} className="mt-1 p-2 border border-gray-300 rounded-md w-full" />
-                        </div>
-                         <div>
-                            <label htmlFor="nationality" className="block text-sm font-medium text-gray-700">Nationalität</label>
-                            <input type="text" id="nationality" name="nationality" value={formData.nationality || ''} onChange={handleChange} placeholder="z.B. DE, AT, CH" className="mt-1 p-2 border border-gray-300 rounded-md w-full" />
-                        </div>
-                    </div>
-                     <div>
-                        <label htmlFor="startNumber" className="block text-sm font-medium text-gray-700">Startnummer</label>
-                        <input type="text" id="startNumber" name="startNumber" value={formData.startNumber || ''} onChange={handleChange} className="mt-1 p-2 border border-gray-300 rounded-md w-full" />
                     </div>
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                         <div>

@@ -1,4 +1,5 @@
 
+
 import React from 'react';
 import { Participant, Gender, PerfClass } from '../types';
 import { UploadIcon, UsersIcon, PencilIcon, TrashIcon, CheckIcon } from './icons';
@@ -36,9 +37,6 @@ export const ParticipantsList: React.FC<ParticipantsListProps> = ({ participants
             <thead className="bg-gray-100">
               <tr>
                 <th className="p-4 font-semibold text-sm text-gray-600 tracking-wider">Name</th>
-                <th className="p-4 font-semibold text-sm text-gray-600 tracking-wider">Verein</th>
-                <th className="p-4 font-semibold text-sm text-gray-600 tracking-wider">Startnr.</th>
-                <th className="p-4 font-semibold text-sm text-gray-600 tracking-wider">Nation</th>
                 <th className="p-4 font-semibold text-sm text-gray-600 tracking-wider">Jahrgang</th>
                 <th className="p-4 font-semibold text-sm text-gray-600 tracking-wider">Klasse</th>
                 <th className="p-4 font-semibold text-sm text-gray-600 tracking-wider">Geschlecht</th>
@@ -52,9 +50,6 @@ export const ParticipantsList: React.FC<ParticipantsListProps> = ({ participants
               {participants.map((p) => (
                 <tr key={p.id} className="hover:bg-primary/10">
                   <td className="p-4 text-gray-800 font-medium">{p.lastName}, {p.firstName}</td>
-                  <td className="p-4 text-gray-700">{p.club || '-'}</td>
-                  <td className="p-4 text-gray-700">{p.startNumber || '-'}</td>
-                  <td className="p-4 text-gray-700">{p.nationality || '-'}</td>
                   <td className="p-4 text-gray-700">{p.birthYear}</td>
                   <td className="p-4 text-gray-700">{getPerfClassLabel(p.perfClass)}</td>
                   <td className="p-4 text-gray-700">{getGenderLabel(p.gender)}</td>
@@ -75,7 +70,7 @@ export const ParticipantsList: React.FC<ParticipantsListProps> = ({ participants
               ))}
               {participants.length === 0 && (
                 <tr>
-                  <td colSpan={11} className="p-4 text-center text-gray-500">
+                  <td colSpan={8} className="p-4 text-center text-gray-500">
                     Keine Teilnehmer vorhanden. Starten Sie mit dem Import.
                   </td>
                 </tr>

@@ -38,10 +38,10 @@ const TeamMemberRow: React.FC<{
                 <input
                     type="number"
                     placeholder="Zeit"
-                    // FIX: The nullish coalescing operator (??) is used to handle `timeSeconds` being 0.
+                    // The nullish coalescing operator (??) is used to handle `timeSeconds` being 0.
                     // Using `|| ''` would incorrectly display an empty string for a time of 0 seconds.
                     value={memberResult.timeSeconds ?? ''}
-                    // FIX: `parseInt` is called with a radix of 10 for correctness. The result is checked
+                    // `parseInt` is called with a radix of 10 for correctness. The result is checked
                     // for NaN to correctly handle empty input, and 0 is preserved as a valid value.
                     onChange={e => { const num = parseInt(e.target.value, 10); onResultChange(memberResult.id, 'timeSeconds', isNaN(num) ? undefined : num); }}
                     className="w-full p-2 text-sm border border-gray-300 rounded-md"
@@ -84,8 +84,7 @@ const TeamMemberRow: React.FC<{
 export const EventFormModal: React.FC<EventFormModalProps> = ({
     onClose, onSave, event, allParticipants, eventResults, eventTeams, eventTeamMembers, settings, selectedSeason
 }) => {
-    // FIX: Explicitly typing the `formData` state with `Omit<Event, 'id' | 'season'>`
-    // ensures type consistency and prevents potential inference errors.
+    // FIX: Re-added explicit Omit type for robust type safety and to fix downstream inference issues.
     const [formData, setFormData] = useState<Omit<Event, 'id' | 'season'>>({
         name: event?.name || '',
         date: event?.date || new Date().toISOString().split('T')[0],
@@ -150,7 +149,7 @@ export const EventFormModal: React.FC<EventFormModalProps> = ({
         setResults(prev => [...prev, ...newResults]);
     };
     
-    // FIX: Using a generic type `<K extends keyof Result>` makes this handler
+    // Using a generic type `<K extends keyof Result>` makes this handler
     // fully type-safe, preventing incorrect field names or value types from being passed.
     const handleResultChange = <K extends keyof Result>(resultId: string, field: K, value: Result[K]) => {
         setResults(prev => prev.map(r => r.id === resultId ? { ...r, [field]: value } : r));
@@ -169,13 +168,13 @@ export const EventFormModal: React.FC<EventFormModalProps> = ({
         setTeams(prev => [...prev, newTeam]);
     };
 
-    // FIX: Using a generic type `<K extends keyof Team>` makes this handler
+    // Using a generic type `<K extends keyof Team>` makes this handler
     // fully type-safe, preventing incorrect field names or value types from being passed.
     const handleTeamChange = <K extends keyof Team>(teamId: string, field: K, value: Team[K]) => {
         setTeams(prev => prev.map(t => t.id === teamId ? { ...t, [field]: value } : t));
     };
     
-    // FIX: Using a generic type `<K extends keyof TeamMember>` makes this handler
+    // Using a generic type `<K extends keyof TeamMember>` makes this handler
     // fully type-safe, preventing incorrect field names or value types from being passed.
     const handleTeamMemberChange = <K extends keyof TeamMember>(memberId: string, field: K, value: TeamMember[K]) => {
         setTeamMembers(prev => prev.map(tm => tm.id === memberId ? { ...tm, [field]: value } : tm));

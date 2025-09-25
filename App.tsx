@@ -1,5 +1,3 @@
-
-
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { Participant, Event, Result, Team, TeamMember, Settings, View, EventType } from './types';
 import { getMockParticipants, getMockEvents, getMockResults, getMockTeams, getMockTeamMembers, getInitialSettings } from './services/mockDataService';
@@ -41,7 +39,7 @@ const Sidebar: React.FC<{ activeView: View; setView: (view: View) => void }> = (
                 className={`w-full text-left flex items-center space-x-3 p-3 rounded-lg transition-colors duration-200 ${
                   activeView === item.view || (isDetailView && item.view === 'events')
                     ? 'bg-primary text-white font-semibold'
-                    // FIX: Updated the hover color for better contrast and consistency.
+                    // Updated the hover color for better contrast and consistency.
                     : 'hover:bg-primary/20'
                 }`}
               >
@@ -187,26 +185,34 @@ const App: React.FC = () => {
     setEventModalOpen(false);
   };
 
-  // FIX: Destructuring `eventData` resolves a TypeScript type inference issue.
-  // When an intersection type is spread within a closure (like `setEvents(prev => ...)`),
-  // its properties can be inferred as `unknown`, causing errors.
-  // By destructuring first, we create a plain object that can be spread safely.
   const handleSaveEvent = (
       eventData: Omit<Event, 'id' | 'season'> & { id?: string },
       eventResults: Result[],
       eventTeams: Team[],
       eventTeamMembers: TeamMember[]
   ) => {
+      // FIX: The intermediate plainEventData object was removed because spreading the complex
+      // intersection type of eventData was causing TypeScript to lose type information,
+      // resulting in an 'unknown' type. Using eventData directly solves the issue.
       const isEditing = !!eventData.id;
       const eventId = eventData.id || `e${Date.now()}`;
 
+      // This object is for use inside the `setEvents` closure.
+      const eventToSave = {
+        name: eventData.name,
+        date: eventData.date,
+        location: eventData.location,
+        eventType: eventData.eventType,
+        notes: eventData.notes,
+        finished: eventData.finished,
+      };
+
       // 1. Update Events state
       setEvents(prevEvents => {
-        const originalEvent = isEditing ? prevEvents.find(e => e.id === eventData.id) : null;
+        const originalEvent = isEditing ? prevEvents.find(e => e.id === eventId) : null;
         const season = originalEvent ? originalEvent.season : selectedSeason!;
         
-        const { id, ...baseEventData } = eventData;
-        const updatedEvent: Event = { ...baseEventData, id: eventId, season };
+        const updatedEvent: Event = { ...eventToSave, id: eventId, season };
 
         if (isEditing) {
             return prevEvents.map(e => e.id === eventId ? updatedEvent : e);
@@ -238,10 +244,8 @@ const App: React.FC = () => {
   
   const handleDeleteEvent = (eventId: string) => {
     if (window.confirm("Möchten Sie dieses Event und alle zugehörigen Ergebnisse wirklich löschen?")) {
-        // Find the IDs of teams associated with this event from the current state.
         const teamIdsToDelete = new Set(teams.filter(t => t.eventId === eventId).map(t => t.id));
         
-        // Use functional updates to ensure atomicity and work with the latest state.
         setEvents(prev => prev.filter(e => e.id !== eventId));
         setResults(prev => prev.filter(r => r.eventId !== eventId));
         setTeams(prev => prev.filter(t => t.eventId !== eventId));

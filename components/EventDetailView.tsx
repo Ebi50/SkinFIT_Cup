@@ -1,6 +1,6 @@
 
 
-import React, { useMemo, useState } from 'react';
+import React, { useMemo, useState, useEffect } from 'react';
 import { Event, Participant, Result, Team, TeamMember, Settings, EventType } from '../types';
 import { ArrowLeftIcon, CalendarIcon } from './icons';
 import { calculateHandicap } from '../services/scoringService';
@@ -24,10 +24,30 @@ const eventTypeLabels: Record<EventType, string> = {
 
 const formatDate = (dateString: string) => new Intl.DateTimeFormat('de-DE', { dateStyle: 'full' }).format(new Date(dateString));
 
+// Helper function to determine placement points, mirrored from scoringService
+const getPlacementPoints = (rank: number): number => {
+    if (rank <= 10) return 8;
+    if (rank <= 20) return 7;
+    if (rank <= 30) return 6;
+    return 5;
+};
+
 export const EventDetailView: React.FC<EventDetailViewProps> = ({ event, participants, results, teams, teamMembers, settings, onBack }) => {
     
     const [filterStatus, setFilterStatus] = useState<'all' | 'finished' | 'dnf'>('all');
     const [searchTerm, setSearchTerm] = useState('');
+    const [sortConfig, setSortConfig] = useState<{ key: string; direction: 'asc' | 'desc' } | null>(null);
+
+    useEffect(() => {
+        // Set default sort order based on event type when it changes
+        if (event.eventType === EventType.Handicap) {
+            setSortConfig({ key: 'points', direction: 'desc' });
+        } else if (event.eventType === EventType.EZF || event.eventType === EventType.BZF) {
+            setSortConfig({ key: 'rank', direction: 'asc' });
+        } else {
+            setSortConfig(null); // No default sort for MZF team view
+        }
+    }, [event.eventType]);
 
     const participantMap = useMemo(() => new Map(participants.map(p => [p.id, p])), [participants]);
     
@@ -35,6 +55,19 @@ export const EventDetailView: React.FC<EventDetailViewProps> = ({ event, partici
         const p = participantMap.get(id);
         return p ? `${p.lastName}, ${p.firstName}` : 'Unbekannt';
     }
+    
+    const requestSort = (key: string) => {
+        let direction: 'asc' | 'desc' = 'asc';
+        if (sortConfig && sortConfig.key === key && sortConfig.direction === 'asc') {
+            direction = 'desc';
+        }
+        setSortConfig({ key, direction });
+    };
+
+    const getSortArrow = (key: string) => {
+        if (!sortConfig || sortConfig.key !== key) return '';
+        return sortConfig.direction === 'asc' ? ' ▲' : ' ▼';
+    };
 
     const filteredResults = useMemo(() => {
         const searchTermLower = searchTerm.toLowerCase();
@@ -48,7 +81,8 @@ export const EventDetailView: React.FC<EventDetailViewProps> = ({ event, partici
 
 
     const renderTimeTrialResults = () => {
-        const finishers = filteredResults
+        // Calculate ranks based on adjusted time first, this is the "official" ranking
+        const rankedFinishers = filteredResults
             .filter(r => !r.dnf && participantMap.has(r.participantId))
             .map(r => {
                 const participant = participantMap.get(r.participantId)!;
@@ -56,11 +90,33 @@ export const EventDetailView: React.FC<EventDetailViewProps> = ({ event, partici
                 const adjustedTime = (r.timeSeconds || 0) + handicap;
                 return { ...r, participant, adjustedTime };
             })
-            .sort((a, b) => a.adjustedTime - b.adjustedTime);
+            .sort((a, b) => a.adjustedTime - b.adjustedTime)
+            .map((result, index) => ({...result, rank: index + 1}));
+
+        // Now apply interactive sorting for display purposes
+        let displayData: (typeof rankedFinishers[number] & { participantName?: string })[] = [...rankedFinishers];
+
+        if (sortConfig) {
+             displayData.sort((a, b) => {
+                let aVal: any;
+                let bVal: any;
+                if (sortConfig.key === 'name') {
+                    aVal = getParticipantName(a.participantId);
+                    bVal = getParticipantName(b.participantId);
+                } else {
+                    aVal = a[sortConfig.key as keyof typeof a] ?? (sortConfig.direction === 'asc' ? Infinity : -Infinity);
+                    bVal = b[sortConfig.key as keyof typeof b] ?? (sortConfig.direction === 'asc' ? Infinity : -Infinity);
+                }
+
+                if (aVal < bVal) return sortConfig.direction === 'asc' ? -1 : 1;
+                if (aVal > bVal) return sortConfig.direction === 'asc' ? 1 : -1;
+                return 0;
+            });
+        }
 
         const dnfs = filteredResults.filter(r => r.dnf);
 
-        if (finishers.length === 0 && dnfs.length === 0) {
+        if (displayData.length === 0 && dnfs.length === 0) {
             return <div className="p-4 text-center text-gray-500">Keine Ergebnisse für die aktuellen Filter gefunden.</div>;
         }
 
@@ -68,19 +124,28 @@ export const EventDetailView: React.FC<EventDetailViewProps> = ({ event, partici
              <table className="w-full text-left">
                 <thead className="bg-gray-100">
                     <tr>
-                        <th className="p-3 font-semibold text-sm text-gray-600 tracking-wider">Rang</th>
-                        <th className="p-3 font-semibold text-sm text-gray-600 tracking-wider">Name</th>
-                        <th className="p-3 font-semibold text-sm text-gray-600 tracking-wider text-center">Zeit</th>
-                        <th className="p-3 font-semibold text-sm text-gray-600 tracking-wider text-center">Angep. Zeit</th>
-                        <th className="p-3 font-semibold text-sm text-gray-600 tracking-wider text-right">Punkte</th>
+                        <th className="p-3 font-semibold text-sm text-gray-600 tracking-wider">
+                            <button className="font-semibold" onClick={() => requestSort('rank')}>Rang{getSortArrow('rank')}</button>
+                        </th>
+                        <th className="p-3 font-semibold text-sm text-gray-600 tracking-wider">
+                             <button className="font-semibold" onClick={() => requestSort('name')}>Name{getSortArrow('name')}</button>
+                        </th>
+                        <th className="p-3 font-semibold text-sm text-gray-600 tracking-wider text-center">
+                            <button className="font-semibold" onClick={() => requestSort('timeSeconds')}>Zeit{getSortArrow('timeSeconds')}</button>
+                        </th>
+                        <th className="p-3 font-semibold text-sm text-gray-600 tracking-wider text-center">
+                            <button className="font-semibold" onClick={() => requestSort('adjustedTime')}>Angep. Zeit{getSortArrow('adjustedTime')}</button>
+                        </th>
+                        <th className="p-3 font-semibold text-sm text-gray-600 tracking-wider text-right">
+                             <button className="font-semibold" onClick={() => requestSort('points')}>Punkte{getSortArrow('points')}</button>
+                        </th>
                     </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-200">
-                    {finishers.map((result, index) => (
+                    {displayData.map((result) => (
                         <tr key={result.id} className="hover:bg-primary/10">
-                            <td className="p-3 font-bold">{index + 1}.</td>
+                            <td className="p-3 font-bold">{result.rank}.</td>
                             <td className="p-3">
-                                {result.participant.startNumber && <span className="font-mono text-xs text-gray-500 mr-2">[#{result.participant.startNumber}]</span>}
                                 {getParticipantName(result.participantId)}
                             </td>
                             <td className="p-3 font-mono text-center">{result.timeSeconds}s</td>
@@ -89,12 +154,10 @@ export const EventDetailView: React.FC<EventDetailViewProps> = ({ event, partici
                         </tr>
                     ))}
                     {dnfs.map(result => {
-                         const participant = participantMap.get(result.participantId);
                          return (
                              <tr key={result.id} className="hover:bg-red-50 opacity-70">
                                 <td className="p-3 font-bold text-red-600">DNF</td>
                                 <td className="p-3">
-                                    {participant?.startNumber && <span className="font-mono text-xs text-gray-500 mr-2">[#{participant.startNumber}]</span>}
                                     {getParticipantName(result.participantId)}
                                 </td>
                                 <td className="p-3 font-mono text-center">-</td>
@@ -164,52 +227,85 @@ export const EventDetailView: React.FC<EventDetailViewProps> = ({ event, partici
 
         return (
             <div className="space-y-6">
-                {rankedTeams.map((team, index) => (
-                    <div key={team.id} className="bg-white rounded-xl shadow-lg p-4 border border-gray-200">
-                        <div className="flex justify-between items-center mb-3 border-b pb-3">
-                            <h4 className="text-xl font-bold text-secondary">{index + 1}. {team.name}</h4>
-                            <div className="text-right">
-                                <div className="text-sm text-gray-500">Team-Zeit</div>
-                                <div className="text-2xl font-bold text-primary-dark">{isFinite(team.adjustedTime) ? `${team.adjustedTime.toFixed(0)}s` : 'N/A'}</div>
+                {rankedTeams.map((team, index) => {
+                    const teamRank = index + 1;
+                    const teamPoints = isFinite(team.adjustedTime) ? getPlacementPoints(teamRank) : 0;
+                    
+                    return (
+                        <div key={team.id} className="bg-white rounded-xl shadow-lg p-4 border border-gray-200">
+                            <div className="flex justify-between items-center mb-3 border-b pb-3">
+                                <h4 className="text-xl font-bold text-secondary">{teamRank}. {team.name}</h4>
+                                <div className="flex items-center space-x-8">
+                                    <div className="text-right">
+                                        <div className="text-sm text-gray-500">Team-Zeit</div>
+                                        <div className="text-2xl font-bold text-primary-dark">{isFinite(team.adjustedTime) ? `${team.adjustedTime.toFixed(0)}s` : 'N/A'}</div>
+                                    </div>
+                                    <div className="text-right">
+                                        <div className="text-sm text-gray-500">Punkte</div>
+                                        <div className="text-2xl font-bold text-primary-dark">{teamPoints}</div>
+                                    </div>
+                                </div>
                             </div>
+                             <table className="w-full text-left text-sm">
+                                <thead>
+                                    <tr>
+                                        <th className="p-2 font-semibold text-gray-600">Name</th>
+                                        <th className="p-2 font-semibold text-gray-600 text-center">Ind. Zeit</th>
+                                        <th className="p-2 font-semibold text-gray-600 text-center">Status</th>
+                                        <th className="p-2 font-semibold text-gray-600 text-right">Punkte</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {team.members
+                                        .sort((a, b) => getParticipantName(a.participantId).localeCompare(getParticipantName(b.participantId)))
+                                        .map(member => {
+                                        const result = resultMap.get(member.participantId);
+                                        return (
+                                            <tr key={member.id}>
+                                                <td className="p-2">
+                                                    {getParticipantName(member.participantId)}
+                                                </td>
+                                                <td className="p-2 text-center font-mono">{result?.timeSeconds ? `${result.timeSeconds}s` : '-'}</td>
+                                                <td className="p-2 text-center font-semibold">{result?.dnf ? <span className="text-red-600">DNF</span> : 'Finisher'}</td>
+                                                <td className="p-2 text-right font-mono font-bold">{result?.points ?? 0}</td>
+                                            </tr>
+                                        );
+                                    })}
+                                </tbody>
+                            </table>
                         </div>
-                         <table className="w-full text-left text-sm">
-                            <thead>
-                                <tr>
-                                    <th className="p-2 font-semibold text-gray-600">Name</th>
-                                    <th className="p-2 font-semibold text-gray-600 text-center">Ind. Zeit</th>
-                                    <th className="p-2 font-semibold text-gray-600 text-center">Status</th>
-                                    <th className="p-2 font-semibold text-gray-600 text-right">Punkte</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                {team.members.map(member => {
-                                    const result = resultMap.get(member.participantId);
-                                    const participant = participantMap.get(member.participantId);
-                                    return (
-                                        <tr key={member.id}>
-                                            <td className="p-2">
-                                                {participant?.startNumber && <span className="font-mono text-xs text-gray-500 mr-2">[#{participant.startNumber}]</span>}
-                                                {getParticipantName(member.participantId)}
-                                            </td>
-                                            <td className="p-2 text-center font-mono">{result?.timeSeconds ? `${result.timeSeconds}s` : '-'}</td>
-                                            <td className="p-2 text-center font-semibold">{result?.dnf ? <span className="text-red-600">DNF</span> : 'Finisher'}</td>
-                                            <td className="p-2 text-right font-mono font-bold">{result?.points ?? 0}</td>
-                                        </tr>
-                                    );
-                                })}
-                            </tbody>
-                        </table>
-                    </div>
-                ))}
+                    );
+                })}
             </div>
         );
     }
     
     const renderHandicapResults = () => {
-        const sortedResults = [...filteredResults].sort((a, b) => (b.points ?? 0) - (a.points ?? 0));
+        // Calculate initial ranks based on points
+        const rankedResults = [...filteredResults]
+            .sort((a, b) => (b.points ?? 0) - (a.points ?? 0))
+            .map((r, index) => ({ ...r, rank: index + 1 }));
+
+        // Apply interactive display sort
+        let displayData = [...rankedResults];
+        if (sortConfig) {
+            displayData.sort((a,b) => {
+                let aVal, bVal;
+                if (sortConfig.key === 'name') {
+                    aVal = getParticipantName(a.participantId);
+                    bVal = getParticipantName(b.participantId);
+                } else {
+                    aVal = a[sortConfig.key as keyof typeof a] ?? -1;
+                    bVal = b[sortConfig.key as keyof typeof b] ?? -1;
+                }
+                
+                if (aVal < bVal) return sortConfig.direction === 'asc' ? -1 : 1;
+                if (aVal > bVal) return sortConfig.direction === 'asc' ? 1 : -1;
+                return 0;
+            });
+        }
         
-        if (sortedResults.length === 0) {
+        if (displayData.length === 0) {
             return <div className="p-4 text-center text-gray-500">Keine Ergebnisse für die aktuellen Filter gefunden.</div>;
         }
 
@@ -217,20 +313,26 @@ export const EventDetailView: React.FC<EventDetailViewProps> = ({ event, partici
             <table className="w-full text-left">
                 <thead className="bg-gray-100">
                     <tr>
-                        <th className="p-3 font-semibold text-sm text-gray-600 tracking-wider">Rang</th>
-                        <th className="p-3 font-semibold text-sm text-gray-600 tracking-wider">Name</th>
-                        <th className="p-3 font-semibold text-sm text-gray-600 tracking-wider">Zielgruppe</th>
-                        <th className="p-3 font-semibold text-sm text-gray-600 tracking-wider text-right">Punkte</th>
+                        <th className="p-3 font-semibold text-sm text-gray-600 tracking-wider">
+                           <button className="font-semibold" onClick={() => requestSort('rank')}>Rang{getSortArrow('rank')}</button>
+                        </th>
+                        <th className="p-3 font-semibold text-sm text-gray-600 tracking-wider">
+                            <button className="font-semibold" onClick={() => requestSort('name')}>Name{getSortArrow('name')}</button>
+                        </th>
+                        <th className="p-3 font-semibold text-sm text-gray-600 tracking-wider">
+                           <button className="font-semibold" onClick={() => requestSort('finisherGroup')}>Zielgruppe{getSortArrow('finisherGroup')}</button>
+                        </th>
+                        <th className="p-3 font-semibold text-sm text-gray-600 tracking-wider text-right">
+                            <button className="font-semibold" onClick={() => requestSort('points')}>Punkte{getSortArrow('points')}</button>
+                        </th>
                     </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-200">
-                    {sortedResults.map((result, index) => {
-                        const participant = participantMap.get(result.participantId);
+                    {displayData.map((result) => {
                         return (
                              <tr key={result.id} className="hover:bg-primary/10">
-                                <td className="p-3 font-bold">{index + 1}.</td>
+                                <td className="p-3 font-bold">{result.rank}.</td>
                                 <td className="p-3">
-                                    {participant?.startNumber && <span className="font-mono text-xs text-gray-500 mr-2">[#{participant.startNumber}]</span>}
                                     {getParticipantName(result.participantId)}
                                 </td>
                                 <td className="p-3">{result.finisherGroup ? `Gruppe ${result.finisherGroup}` : '-'}</td>

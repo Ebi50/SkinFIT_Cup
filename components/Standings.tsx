@@ -1,4 +1,4 @@
-import React, { useMemo } from 'react';
+import React, { useMemo, useState } from 'react';
 import { Participant, Event, Result, Settings, GroupLabel, EventType } from '../types';
 import { calculateOverallStandings, Standing } from '../services/scoringService';
 import { ChartBarIcon } from './icons';
@@ -43,57 +43,107 @@ const getEventHeaderLabel = (event: Event): string => {
 };
 
 
-const StandingsTable: React.FC<StandingsTableProps> = ({ title, standings, finishedEvents }) => (
-  <div className="bg-white rounded-xl shadow-lg p-6 mb-8">
-    <h3 className="text-2xl font-bold text-secondary mb-4 border-b-2 border-primary pb-2">{title}</h3>
-    <div className="overflow-x-auto">
-      <table className="w-full text-left">
-        <thead className="bg-gray-100">
-          <tr>
-            <th className="p-3 font-semibold text-sm text-gray-600 tracking-wider">Rang</th>
-            <th className="p-3 font-semibold text-sm text-gray-600 tracking-wider min-w-[200px]">Name</th>
-            {finishedEvents.map((event) => (
-              <th key={event.id} className="p-3 font-semibold text-sm text-gray-600 tracking-wider text-center" title={event.name}>
-                {getEventHeaderLabel(event)}
-              </th>
-            ))}
-            <th className="p-3 font-semibold text-sm text-gray-600 tracking-wider text-right">Gesamt</th>
-          </tr>
-        </thead>
-        <tbody className="divide-y divide-gray-200">
-          {standings.map((standing, index) => (
-            <tr key={standing.participantId} className="hover:bg-primary/10">
-              <td className="p-3 font-bold text-gray-800">{index + 1}.</td>
-              <td className="p-3 text-gray-700">
-                <div>{standing.participantName}</div>
-                <div className="text-xs text-gray-500">Klasse: {standing.participantClass}</div>
-              </td>
-              {finishedEvents.map(event => {
-                const result = standing.results.find(r => r.eventId === event.id);
-                const points = result ? result.points : '-';
-                const isDropped = result?.isDropped;
-                
-                return (
-                  <td key={event.id} className={`p-3 font-mono text-center ${isDropped ? 'text-gray-400' : 'text-gray-700'}`}>
-                    {isDropped ? <s title="Streichergebnis">{points}</s> : points}
-                  </td>
-                );
-              })}
-              <td className="p-3 font-mono text-right text-primary-dark font-bold">{standing.finalPoints}</td>
-            </tr>
-          ))}
-          {standings.length === 0 && (
+const StandingsTable: React.FC<StandingsTableProps> = ({ title, standings, finishedEvents }) => {
+  const [sortConfig, setSortConfig] = useState<{ key: string; direction: 'asc' | 'desc' }>({ key: 'finalPoints', direction: 'desc' });
+  
+  const sortedStandings = useMemo(() => {
+    const sortableItems = [...standings];
+    if (sortConfig) {
+      sortableItems.sort((a, b) => {
+        let aValue: any;
+        let bValue: any;
+
+        if (sortConfig.key === 'participantName' || sortConfig.key === 'finalPoints') {
+          aValue = a[sortConfig.key as keyof Standing];
+          bValue = b[sortConfig.key as keyof Standing];
+        } else { // Sort by event points
+          aValue = a.results.find(r => r.eventId === sortConfig.key)?.points ?? -1;
+          bValue = b.results.find(r => r.eventId === sortConfig.key)?.points ?? -1;
+        }
+
+        if (aValue < bValue) return sortConfig.direction === 'asc' ? -1 : 1;
+        if (aValue > bValue) return sortConfig.direction === 'asc' ? 1 : -1;
+        return 0;
+      });
+    }
+    return sortableItems;
+  }, [standings, sortConfig]);
+  
+  const requestSort = (key: string) => {
+    let direction: 'asc' | 'desc' = 'desc';
+    if (sortConfig && sortConfig.key === key && sortConfig.direction === 'desc') {
+      direction = 'asc';
+    }
+    setSortConfig({ key, direction });
+  };
+  
+  const getSortArrow = (key: string) => {
+    if (!sortConfig || sortConfig.key !== key) return null;
+    return sortConfig.direction === 'desc' ? ' ▼' : ' ▲';
+  };
+
+  return (
+    <div className="bg-white rounded-xl shadow-lg p-6 mb-8">
+      <h3 className="text-2xl font-bold text-secondary mb-4 border-b-2 border-primary pb-2">{title}</h3>
+      <div className="overflow-x-auto">
+        <table className="w-full text-left">
+          <thead className="bg-gray-100">
             <tr>
-              <td colSpan={3 + finishedEvents.length} className="p-4 text-center text-gray-500">
-                Keine Daten für diese Gruppe verfügbar.
-              </td>
+              <th className="p-3 font-semibold text-sm text-gray-600 tracking-wider">Rang</th>
+              <th className="p-3 font-semibold text-sm text-gray-600 tracking-wider min-w-[200px]">
+                <button onClick={() => requestSort('participantName')} className="w-full text-left font-semibold">
+                  Name{getSortArrow('participantName')}
+                </button>
+              </th>
+              {finishedEvents.map((event) => (
+                <th key={event.id} className="p-3 font-semibold text-sm text-gray-600 tracking-wider text-center" title={event.name}>
+                  <button onClick={() => requestSort(event.id)} className="w-full text-center font-semibold">
+                    {getEventHeaderLabel(event)}{getSortArrow(event.id)}
+                  </button>
+                </th>
+              ))}
+              <th className="p-3 font-semibold text-sm text-gray-600 tracking-wider text-right">
+                <button onClick={() => requestSort('finalPoints')} className="w-full text-right font-semibold">
+                  Gesamt{getSortArrow('finalPoints')}
+                </button>
+              </th>
             </tr>
-          )}
-        </tbody>
-      </table>
+          </thead>
+          <tbody className="divide-y divide-gray-200">
+            {sortedStandings.map((standing, index) => (
+              <tr key={standing.participantId} className="hover:bg-primary/10">
+                <td className="p-3 font-bold text-gray-800">{index + 1}.</td>
+                <td className="p-3 text-gray-700">
+                  <div>{standing.participantName}</div>
+                  <div className="text-xs text-gray-500">Klasse: {standing.participantClass}</div>
+                </td>
+                {finishedEvents.map(event => {
+                  const result = standing.results.find(r => r.eventId === event.id);
+                  const points = result ? result.points : '-';
+                  const isDropped = result?.isDropped;
+                  
+                  return (
+                    <td key={event.id} className={`p-3 font-mono text-center ${isDropped ? 'text-gray-400' : 'text-gray-700'}`}>
+                      {isDropped ? <s title="Streichergebnis">{points}</s> : points}
+                    </td>
+                  );
+                })}
+                <td className="p-3 font-mono text-right text-primary-dark font-bold">{standing.finalPoints}</td>
+              </tr>
+            ))}
+            {standings.length === 0 && (
+              <tr>
+                <td colSpan={3 + finishedEvents.length} className="p-4 text-center text-gray-500">
+                  Keine Daten für diese Gruppe verfügbar.
+                </td>
+              </tr>
+            )}
+          </tbody>
+        </table>
+      </div>
     </div>
-  </div>
-);
+  );
+};
 
 export const Standings: React.FC<StandingsProps> = ({ participants, events, results, settings }) => {
   const groupedStandings = useMemo(
@@ -111,7 +161,7 @@ export const Standings: React.FC<StandingsProps> = ({ participants, events, resu
       </div>
       <p className="mb-8 text-gray-600">
         Die Gesamtwertung wird automatisch basierend auf den Ergebnissen der abgeschlossenen Rennen berechnet. 
-        Streichergebnisse ({settings.dropScores}) werden berücksichtigt und sind durchgestrichen markiert.
+        Streichergebnisse ({settings.dropScores}) werden berücksichtigt und sind durchgestrichen markiert. Klicken Sie auf eine Spaltenüberschrift, um die Tabelle zu sortieren.
       </p>
 
       <div className="grid grid-cols-1 gap-8">
