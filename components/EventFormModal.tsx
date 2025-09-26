@@ -1,8 +1,8 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { Event, Participant, Result, Team, TeamMember, EventType, Settings } from '../types';
+import { Event, Participant, Result, Team, TeamMember, EventType, Settings, GroupLabel } from '../types';
 import { CloseIcon, PlusIcon, TrashIcon, UsersIcon } from './icons';
 import { ParticipantSelectionModal } from './ParticipantSelectionModal';
-import { calculateHandicap } from '../services/scoringService';
+import { calculateHandicap, getParticipantGroup } from '../services/scoringService';
 
 interface EventFormModalProps {
     onClose: () => void;
@@ -84,9 +84,7 @@ const TeamMemberRow: React.FC<{
 export const EventFormModal: React.FC<EventFormModalProps> = ({
     onClose, onSave, event, allParticipants, eventResults, eventTeams, eventTeamMembers, settings, selectedSeason
 }) => {
-    // FIX: Removed explicit Omit type to let TypeScript infer a simpler structural type, 
-    // avoiding downstream type inference issues that were causing 'unknown' types.
-    const [formData, setFormData] = useState({
+    const [formData, setFormData] = useState<Omit<Event, 'id' | 'season'>>({
         name: event?.name || '',
         date: event?.date || new Date().toISOString().split('T')[0],
         location: event?.location || '',
@@ -110,7 +108,9 @@ export const EventFormModal: React.FC<EventFormModalProps> = ({
             const resultsParticipantIds = new Set(results.map(r => r.participantId));
             const missingResults: Result[] = [];
             
-            teamMemberParticipantIds.forEach(participantId => {
+            // FIX: Explicitly typing `participantId` as a string helps TypeScript's inference engine
+            // inside the loop, preventing it from being treated as `unknown`.
+            teamMemberParticipantIds.forEach((participantId: string) => {
                 if (!resultsParticipantIds.has(participantId)) {
                     missingResults.push({
                         id: generateId(),
@@ -278,6 +278,81 @@ export const EventFormModal: React.FC<EventFormModalProps> = ({
 
     const renderResultsEditor = () => {
         const eventType = formData.eventType;
+    
+        // Special, grouped rendering for Handicap events
+        if (eventType === EventType.Handicap) {
+            const groupedResults = results.reduce<Record<GroupLabel, Result[]>>((acc, result) => {
+                const participant = participantMap.get(result.participantId);
+                if (participant) {
+                    const group = getParticipantGroup(participant);
+                    if (!acc[group]) acc[group] = [];
+                    acc[group].push(result);
+                }
+                return acc;
+            }, {} as Record<GroupLabel, Result[]>);
+
+            const resultGroups = [
+                { title: "Männer Ambitioniert (C/D)", group: GroupLabel.Ambitious, resultsForGroup: groupedResults[GroupLabel.Ambitious] || [] },
+                { title: "Männer Hobby (A/B)", group: GroupLabel.Hobby, resultsForGroup: groupedResults[GroupLabel.Hobby] || [] },
+                { title: "Frauen", group: GroupLabel.Women, resultsForGroup: groupedResults[GroupLabel.Women] || [] }
+            ];
+            const winnerRanks: (1 | 2 | 3)[] = [1, 2, 3];
+
+            return (
+                 <div>
+                    <h3 className="text-lg font-medium text-gray-800 mb-2">Ergebnisse nach Wertungsgruppe</h3>
+                    <p className="text-sm text-gray-600 mb-4">Teilnehmer werden automatisch ihrer Gruppe zugewiesen. Siegerpunkte können pro Gruppe vergeben werden.</p>
+                     <div className="space-y-6 mt-4">
+                         {resultGroups.map(({ title, resultsForGroup }) => {
+                            if (resultsForGroup.length === 0) return null;
+
+                            const usedRanksInGroup = new Set(resultsForGroup.map(r => r.winnerRank).filter(Boolean));
+
+                            return (
+                                <div key={title} className="p-4 border rounded-lg bg-gray-50/50">
+                                    <h4 className="text-md font-semibold text-gray-800 mb-3 border-b pb-2">{title}</h4>
+                                    <div className="space-y-2">
+                                        {resultsForGroup.map(result => (
+                                            <div key={result.id} className="grid grid-cols-12 gap-2 items-center p-2 bg-white rounded shadow-sm">
+                                                <div className="col-span-12 md:col-span-4 font-medium">{getParticipantName(result.participantId)}</div>
+                                                <div className="col-span-6 md:col-span-3">
+                                                    <select value={result.finisherGroup || 1} onChange={(e) => handleResultChange(result.id, 'finisherGroup', parseInt(e.target.value, 10) || undefined)} className="w-full p-2 border border-gray-300 rounded-md text-sm" aria-label="Zielgruppe auswählen">
+                                                        <option value={1}>Zielgruppe 1</option>
+                                                        <option value={2}>Zielgruppe 2</option>
+                                                    </select>
+                                                </div>
+                                                <div className="col-span-6 md:col-span-3">
+                                                    <select value={result.winnerRank || 0} onChange={(e) => handleResultChange(result.id, 'winnerRank', parseInt(e.target.value) === 0 ? undefined : parseInt(e.target.value) as (1|2|3))} className="w-full p-2 border border-gray-300 rounded-md text-sm">
+                                                        <option value={0}>Kein Bonus</option>
+                                                        {winnerRanks.map(rank => (
+                                                            <option key={rank} value={rank} disabled={usedRanksInGroup.has(rank) && result.winnerRank !== rank}>
+                                                                {rank}. Platz (+{settings.winnerPoints[rank - 1] || 0} Pkt)
+                                                            </option>
+                                                        ))}
+                                                    </select>
+                                                </div>
+                                                 <div className="col-span-12 md:col-span-2 flex items-center justify-end space-x-4">
+                                                    <div className="flex items-center">
+                                                        <input title="Did Not Finish" type="checkbox" id={`dnf-${result.id}`} checked={!!result.dnf} onChange={(e) => handleResultChange(result.id, 'dnf', e.target.checked)} className="h-5 w-5 text-primary focus:ring-primary-dark border-gray-300 rounded" />
+                                                        <label htmlFor={`dnf-${result.id}`} className="ml-2 text-xs text-gray-500">DNF</label>
+                                                    </div>
+                                                    <button onClick={() => handleRemoveResult(result.id)} className="text-red-500 hover:text-red-700 p-1"><TrashIcon className="w-4 h-4"/></button>
+                                                </div>
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+                            );
+                         })}
+                     </div>
+                     <button onClick={() => setParticipantSelectionOpen(true)} className="text-primary hover:text-primary-dark font-semibold py-2 px-4 rounded-lg border border-primary flex items-center space-x-2 mt-4">
+                        <PlusIcon className="w-5 h-5" /> <span>Teilnehmer hinzufügen</span>
+                    </button>
+                 </div>
+            );
+        }
+
+        // Default rendering for other event types (EZF, BZF)
         const usedWinnerRanks = new Set(results.map(r => r.winnerRank).filter(Boolean));
         const winnerRanks: (1 | 2 | 3)[] = [1, 2, 3];
     
@@ -287,15 +362,10 @@ export const EventFormModal: React.FC<EventFormModalProps> = ({
     
                 <div className="grid grid-cols-12 gap-2 items-center mb-2 px-2 text-sm font-semibold text-gray-600">
                     <div className="col-span-3">Teilnehmer</div>
-                    {(eventType === EventType.EZF || eventType === EventType.BZF) && (
-                        <>
-                            <div className="col-span-2">Zeit (sek)</div>
-                            <div className="col-span-2">Angep. Zeit</div>
-                            <div className="col-span-2">Material</div>
-                            <div className="col-span-2">Bonus-Rang</div>
-                        </>
-                    )}
-                    {eventType === EventType.Handicap && <div className="col-span-6 md:col-span-5">Zielgruppe</div>}
+                    <div className="col-span-2">Zeit (sek)</div>
+                    <div className="col-span-2">Angep. Zeit</div>
+                    <div className="col-span-2">Material</div>
+                    <div className="col-span-2">Bonus-Rang</div>
                     <div className="col-span-1 text-center">Aktion</div>
                 </div>
     
@@ -312,44 +382,32 @@ export const EventFormModal: React.FC<EventFormModalProps> = ({
                         <div key={result.id} className="grid grid-cols-12 gap-2 items-center mb-2 p-2 bg-gray-50 rounded">
                             <div className="col-span-3 font-medium">{getParticipantName(result.participantId)}</div>
         
-                            {(eventType === EventType.EZF || eventType === EventType.BZF) && (
-                                <>
-                                    <div className="col-span-2">
-                                        <input type="number" placeholder="Zeit" value={result.timeSeconds ?? ''} onChange={(e) => { const num = parseInt(e.target.value, 10); handleResultChange(result.id, 'timeSeconds', isNaN(num) ? undefined : num); }} className="w-full p-2 border border-gray-300 rounded-md"/>
-                                    </div>
-                                    <div className="col-span-2">
-                                        <input type="text" value={adjustedTime !== null ? `${adjustedTime.toFixed(0)}s` : '-'} readOnly className="w-full p-2 bg-gray-100 border-gray-200 rounded-md text-center font-semibold text-gray-700"/>
-                                    </div>
-                                    <div className="col-span-2 space-y-1">
-                                        <div className="flex items-center text-xs">
-                                            <input type="checkbox" id={`aero-${result.id}`} checked={!!result.hasAeroBars} onChange={(e) => handleResultChange(result.id, 'hasAeroBars', e.target.checked)} className="h-4 w-4 text-primary focus:ring-primary-dark border-gray-300 rounded"/>
-                                            <label htmlFor={`aero-${result.id}`} className="ml-2">Aufsatz</label>
-                                        </div>
-                                        <div className="flex items-center text-xs">
-                                            <input type="checkbox" id={`tt-${result.id}`} checked={!!result.hasTTEquipment} onChange={(e) => handleResultChange(result.id, 'hasTTEquipment', e.target.checked)} className="h-4 w-4 text-primary focus:ring-primary-dark border-gray-300 rounded"/>
-                                            <label htmlFor={`tt-${result.id}`} className="ml-2">Material</label>
-                                        </div>
-                                    </div>
-                                    <div className="col-span-2">
-                                        <select value={result.winnerRank || 0} onChange={(e) => handleResultChange(result.id, 'winnerRank', parseInt(e.target.value) === 0 ? undefined : parseInt(e.target.value) as (1|2|3))} className="w-full p-2 border border-gray-300 rounded-md">
-                                            <option value={0}>Kein Bonus</option>
-                                            {winnerRanks.map(rank => (
-                                                <option key={rank} value={rank} disabled={usedWinnerRanks.has(rank) && result.winnerRank !== rank}>
-                                                    {rank}. Platz (+{settings.winnerPoints[rank - 1] || 0} Pkt)
-                                                </option>
-                                            ))}
-                                        </select>
-                                    </div>
-                                </>
-                            )}
-                            {eventType === EventType.Handicap && (
-                                <div className="col-span-6 md:col-span-5">
-                                    <select value={result.finisherGroup || 1} onChange={(e) => handleResultChange(result.id, 'finisherGroup', parseInt(e.target.value, 10) || undefined)} className="w-full p-2 border border-gray-300 rounded-md" aria-label="Zielgruppe auswählen">
-                                        <option value={1}>Zielgruppe 1 (kein Abzug)</option>
-                                        <option value={2}>Zielgruppe 2 (Punktabzug)</option>
-                                    </select>
+                            <div className="col-span-2">
+                                <input type="number" placeholder="Zeit" value={result.timeSeconds ?? ''} onChange={(e) => { const num = parseInt(e.target.value, 10); handleResultChange(result.id, 'timeSeconds', isNaN(num) ? undefined : num); }} className="w-full p-2 border border-gray-300 rounded-md"/>
+                            </div>
+                            <div className="col-span-2">
+                                <input type="text" value={adjustedTime !== null ? `${adjustedTime.toFixed(0)}s` : '-'} readOnly className="w-full p-2 bg-gray-100 border-gray-200 rounded-md text-center font-semibold text-gray-700"/>
+                            </div>
+                            <div className="col-span-2 space-y-1">
+                                <div className="flex items-center text-xs">
+                                    <input type="checkbox" id={`aero-${result.id}`} checked={!!result.hasAeroBars} onChange={(e) => handleResultChange(result.id, 'hasAeroBars', e.target.checked)} className="h-4 w-4 text-primary focus:ring-primary-dark border-gray-300 rounded"/>
+                                    <label htmlFor={`aero-${result.id}`} className="ml-2">Aufsatz</label>
                                 </div>
-                            )}
+                                <div className="flex items-center text-xs">
+                                    <input type="checkbox" id={`tt-${result.id}`} checked={!!result.hasTTEquipment} onChange={(e) => handleResultChange(result.id, 'hasTTEquipment', e.target.checked)} className="h-4 w-4 text-primary focus:ring-primary-dark border-gray-300 rounded"/>
+                                    <label htmlFor={`tt-${result.id}`} className="ml-2">Material</label>
+                                </div>
+                            </div>
+                            <div className="col-span-2">
+                                <select value={result.winnerRank || 0} onChange={(e) => handleResultChange(result.id, 'winnerRank', parseInt(e.target.value) === 0 ? undefined : parseInt(e.target.value) as (1|2|3))} className="w-full p-2 border border-gray-300 rounded-md">
+                                    <option value={0}>Kein Bonus</option>
+                                    {winnerRanks.map(rank => (
+                                        <option key={rank} value={rank} disabled={usedWinnerRanks.has(rank) && result.winnerRank !== rank}>
+                                            {rank}. Platz (+{settings.winnerPoints[rank - 1] || 0} Pkt)
+                                        </option>
+                                    ))}
+                                </select>
+                            </div>
         
                             <div className="col-span-1 flex items-center justify-around">
                                 <label htmlFor={`dnf-${result.id}`} className="text-xs text-gray-500 sr-only">DNF</label>

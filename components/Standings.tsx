@@ -85,9 +85,9 @@ const StandingsTable: React.FC<StandingsTableProps> = ({ title, standings, finis
   return (
     <div className="bg-white rounded-xl shadow-lg p-6 mb-8">
       <h3 className="text-2xl font-bold text-secondary mb-4 border-b-2 border-primary pb-2">{title}</h3>
-      <div className="overflow-x-auto">
+      <div className="overflow-x-auto max-h-[70vh] overflow-y-auto">
         <table className="w-full text-left">
-          <thead className="bg-gray-100">
+          <thead className="bg-gray-100 sticky top-0 z-10">
             <tr>
               <th className="p-3 font-semibold text-sm text-gray-600 tracking-wider">Rang</th>
               <th className="p-3 font-semibold text-sm text-gray-600 tracking-wider min-w-[200px]">
@@ -96,7 +96,7 @@ const StandingsTable: React.FC<StandingsTableProps> = ({ title, standings, finis
                 </button>
               </th>
               {finishedEvents.map((event) => (
-                <th key={event.id} className="p-3 font-semibold text-sm text-gray-600 tracking-wider text-center" title={event.name}>
+                <th key={event.id} className="p-3 font-semibold text-sm text-gray-600 tracking-wider text-center min-w-[120px]" title={event.name}>
                   <button onClick={() => requestSort(event.id)} className="w-full text-center font-semibold">
                     {getEventHeaderLabel(event)}{getSortArrow(event.id)}
                   </button>

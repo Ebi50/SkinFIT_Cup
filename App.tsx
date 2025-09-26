@@ -191,9 +191,6 @@ const App: React.FC = () => {
       eventTeams: Team[],
       eventTeamMembers: TeamMember[]
   ) => {
-      // FIX: The intermediate plainEventData object was removed because spreading the complex
-      // intersection type of eventData was causing TypeScript to lose type information,
-      // resulting in an 'unknown' type. Using eventData directly solves the issue.
       const isEditing = !!eventData.id;
       const eventId = eventData.id || `e${Date.now()}`;
 
@@ -226,49 +223,44 @@ const App: React.FC = () => {
       
       // 3. Update Teams and Team Members state.
       // We must remove all old teams AND their members for this event, then add the new ones.
-      const oldTeamIdsForEvent = new Set(teams.filter(t => t.eventId === eventId).map(t => t.id));
-      
-      setTeamMembers(prevMembers => [
-          ...prevMembers.filter(tm => !oldTeamIdsForEvent.has(tm.teamId)),
-          ...eventTeamMembers
-      ]);
-
+      // This refactored approach is more explicit and robust, preventing type errors.
+      // FIX: The original logic was complex and prone to type inference errors, leading to the reported issues.
       setTeams(prevTeams => {
-          const finalEventTeams = eventTeams.map(t => ({ ...t, eventId }));
-          return [...prevTeams.filter(t => t.eventId !== eventId), ...finalEventTeams];
+          const teamsToKeep = prevTeams.filter((t: Team) => t.eventId !== eventId);
+          const finalEventTeams = eventTeams.map((t: Team) => ({ ...t, eventId }));
+          return [...teamsToKeep, ...finalEventTeams];
+      });
+
+      setTeamMembers(prevMembers => {
+        const oldTeamIdsForEvent = new Set(teams.filter((t: Team) => t.eventId === eventId).map((t: Team) => t.id));
+        const membersToKeep = prevMembers.filter((tm: TeamMember) => !oldTeamIdsForEvent.has(tm.teamId));
+        return [...membersToKeep, ...eventTeamMembers];
       });
       
       handleCloseEventModal();
   };
   
   const handleDeleteEvent = (eventId: string) => {
-    if (window.confirm("Möchten Sie dieses Event und alle zugehörigen Ergebnisse wirklich löschen?")) {
-        // To correctly remove all data related to an event, we must update several parts of the state.
-        // We use functional updates (`setState(prevState => ...)`) for safety.
+    if (!window.confirm("Möchten Sie dieses Event und alle zugehörigen Ergebnisse wirklich löschen? Dies kann nicht rückgängig gemacht werden.")) {
+      return;
+    }
 
-        // First, we need to find all teams associated with this event, because we need to
-        // delete their members as well. We do this before scheduling the state updates.
-        // This is safe because this handler is recreated on every render, capturing the current `teams` state.
-        const teamIdsForEventToDelete = new Set(teams.filter(t => t.eventId === eventId).map(t => t.id));
+    // --- FIX for Stale State ---
+    // 1. Get all necessary information BEFORE updating state.
+    // This uses the current, correct 'teams' state to find which members to delete.
+    const teamIdsToDelete = new Set(
+        teams.filter(t => t.eventId === eventId).map(t => t.id)
+    );
 
-        // 1. Remove the event itself.
-        setEvents(currentEvents => 
-            currentEvents.filter(e => e.id !== eventId)
-        );
-
-        // 2. Remove all results for the event.
-        setResults(currentResults => 
-            currentResults.filter(r => r.eventId !== eventId)
-        );
-
-        // 3. Remove all teams for the event.
-        setTeams(currentTeams => 
-            currentTeams.filter(t => t.eventId !== eventId)
-        );
-
-        // 4. Remove all team members who were in the teams associated with the event.
-        setTeamMembers(currentTeamMembers => 
-            currentTeamMembers.filter(tm => !teamIdsForEventToDelete.has(tm.teamId))
+    // 2. Perform all state updates using functional updates for safety.
+    // Each filter is now simple and independent.
+    setEvents(currentEvents => currentEvents.filter(e => e.id !== eventId));
+    setResults(currentResults => currentResults.filter(r => r.eventId !== eventId));
+    setTeams(currentTeams => currentTeams.filter(t => t.eventId !== eventId));
+    
+    if (teamIdsToDelete.size > 0) {
+        setTeamMembers(currentTeamMembers =>
+            currentTeamMembers.filter(tm => !teamIdsToDelete.has(tm.teamId))
         );
     }
   };
@@ -306,25 +298,29 @@ const App: React.FC = () => {
     };
 
     const handleDeleteParticipant = (participantId: string) => {
-        if (window.confirm("Möchten Sie diesen Teilnehmer und alle zugehörigen Ergebnisse wirklich löschen? Dies kann nicht rückgängig gemacht werden.")) {
-            // Using functional updates to ensure we're always working with the latest state.
-            // This is a robust way to handle state updates in React.
-
-            // 1. Remove the participant from the main list.
-            setParticipants(currentParticipants => 
-                currentParticipants.filter(p => p.id !== participantId)
-            );
-
-            // 2. Remove all results associated with this participant.
-            setResults(currentResults => 
-                currentResults.filter(r => r.participantId !== participantId)
-            );
-
-            // 3. Remove the participant from any teams they were a member of.
-            setTeamMembers(currentTeamMembers => 
-                currentTeamMembers.filter(tm => tm.participantId !== participantId)
-            );
+        if (!window.confirm("Möchten Sie diesen Teilnehmer und alle zugehörigen Ergebnisse wirklich löschen? Dies kann nicht rückgängig gemacht werden.")) {
+            return;
         }
+
+        // --- FIX for Stale State and Data Consistency ---
+        // Applying the same robust pattern as in handleDeleteEvent.
+        // All updates are performed as independent, functional state updates.
+        // This ensures data integrity across all related state slices.
+
+        // 1. Remove the participant from the main list.
+        setParticipants(currentParticipants =>
+            currentParticipants.filter(p => p.id !== participantId)
+        );
+
+        // 2. Remove all results for this participant across all events.
+        setResults(currentResults =>
+            currentResults.filter(r => r.participantId !== participantId)
+        );
+
+        // 3. Remove the participant from any teams they are a member of.
+        setTeamMembers(currentTeamMembers =>
+            currentTeamMembers.filter(tm => tm.participantId !== participantId)
+        );
     };
 
     const handleViewEvent = (eventId: string) => {

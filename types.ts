@@ -86,6 +86,17 @@ export interface MaterialHandicapSetting {
     seconds: number;
 }
 
+export interface HandicapRule {
+    enabled: boolean;
+    seconds: number; // Can be negative for a bonus or positive for a penalty
+}
+
+export interface AgeHandicapRule extends HandicapRule {
+    minAge: number;
+    maxAge: number;
+}
+
+
 export interface Settings {
   timeTrialBonuses: {
       aeroBars: MaterialHandicapSetting;
@@ -97,7 +108,16 @@ export interface Settings {
   defaultGroupMapping: {
     hobby: PerfClass,
     ambitious: PerfClass
-  }
+  },
+  handicapSettings: {
+    gender: {
+        female: HandicapRule;
+    };
+    ageBrackets: AgeHandicapRule[];
+    perfClass: {
+        hobby: HandicapRule;
+    };
+  };
 }
 
 export type View = 'dashboard' | 'participants' | 'events' | 'standings' | 'settings' | 'eventDetail';

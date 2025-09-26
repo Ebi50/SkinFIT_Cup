@@ -1,4 +1,3 @@
-
 import { Participant, Event, Result, Team, TeamMember, Settings, EventType, PerfClass, Gender } from '../types';
 
 const generateId = () => Math.random().toString(36).substr(2, 9);
@@ -44,8 +43,8 @@ export const getInitialSettings = (): Settings => ({
   },
   winnerPoints: [3, 2, 1],
   handicapBasePoints: {
-    [PerfClass.A]: 10,
-    [PerfClass.B]: 8,
+    [PerfClass.A]: 5,
+    [PerfClass.B]: 6,
     [PerfClass.C]: 6,
     [PerfClass.D]: 4,
   },
@@ -53,5 +52,19 @@ export const getInitialSettings = (): Settings => ({
   defaultGroupMapping: {
     hobby: PerfClass.B,
     ambitious: PerfClass.C,
+  },
+  handicapSettings: {
+    gender: {
+        female: { enabled: true, seconds: -120 }, // Bonus
+    },
+    ageBrackets: [
+        { minAge: 0, maxAge: 18, enabled: true, seconds: -90 },   // Youth
+        { minAge: 40, maxAge: 49, enabled: true, seconds: -60 },  // Sen 2
+        { minAge: 50, maxAge: 59, enabled: true, seconds: -90 },  // Sen 3
+        { minAge: 60, maxAge: 999, enabled: true, seconds: -120 }, // Sen 4
+    ],
+    perfClass: {
+        hobby: { enabled: true, seconds: -45 },
+    },
   },
 });

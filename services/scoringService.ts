@@ -24,29 +24,32 @@ export const calculateHandicap = (participant: Participant, result: Result, even
     let adjustment = 0;
     const eventYear = event.season;
     const age = eventYear - participant.birthYear;
+    const { handicapSettings, timeTrialBonuses } = settings;
 
-    // Gender
-    if (participant.gender === Gender.Female) adjustment -= 120;
-
-    // Age
-    if (age >= 60) adjustment -= 120; // Senioren 4
-    else if (age >= 50 && age <= 59) adjustment -= 90; // Senioren 3
-    else if (age >= 40 && age <= 49) adjustment -= 60; // Senioren 2
-
-    // Youth
-    if (age <= 18) adjustment -= 90; // Jugend
-
-    // Performance Class (Hobby)
-    if ([PerfClass.A, PerfClass.B].includes(participant.perfClass)) {
-        adjustment -= 45; // Hobby
+    // Gender (Bonus is a negative adjustment)
+    if (handicapSettings.gender.female.enabled && participant.gender === Gender.Female) {
+        adjustment += handicapSettings.gender.female.seconds;
     }
 
-    // Material
-    if (settings.timeTrialBonuses.aeroBars.enabled && result.hasAeroBars) {
-      adjustment += settings.timeTrialBonuses.aeroBars.seconds;
+    // Age (Bonus is a negative adjustment)
+    for (const bracket of handicapSettings.ageBrackets) {
+        if (bracket.enabled && age >= bracket.minAge && age <= bracket.maxAge) {
+            adjustment += bracket.seconds;
+            break; // Apply only the first matching age bracket
+        }
     }
-    if (settings.timeTrialBonuses.ttEquipment.enabled && result.hasTTEquipment) {
-      adjustment += settings.timeTrialBonuses.ttEquipment.seconds;
+
+    // Performance Class (Bonus is a negative adjustment)
+    if (handicapSettings.perfClass.hobby.enabled && [PerfClass.A, PerfClass.B].includes(participant.perfClass)) {
+        adjustment += handicapSettings.perfClass.hobby.seconds;
+    }
+
+    // Material (Penalty is a positive adjustment)
+    if (timeTrialBonuses.aeroBars.enabled && result.hasAeroBars) {
+      adjustment += timeTrialBonuses.aeroBars.seconds;
+    }
+    if (timeTrialBonuses.ttEquipment.enabled && result.hasTTEquipment) {
+      adjustment += timeTrialBonuses.ttEquipment.seconds;
     }
 
     return adjustment;
@@ -132,6 +135,12 @@ const calculateHandicapPoints = (
         } else {
              points = 1; // Finisher points if no group
         }
+
+        // Add winner points bonus
+        if (result.winnerRank && result.winnerRank <= settings.winnerPoints.length) {
+            points += settings.winnerPoints[result.winnerRank - 1];
+        }
+
         updatedResults.push({ ...result, points });
     }
     return updatedResults;
@@ -266,40 +275,52 @@ export const calculateOverallStandings = (
         };
     }
 
-    const finishedEvents = events.filter(e => e.finished);
+    const finishedEventIds = new Set(events.filter(e => e.finished).map(e => e.id));
 
-    for (const event of finishedEvents) {
-        const eventResults = results.filter(r => r.eventId === event.id);
-        for (const result of eventResults) {
-            if (standingsByParticipant[result.participantId]) {
-                standingsByParticipant[result.participantId].results.push({
-                    eventId: event.id,
-                    points: result.points,
-                    isDropped: false,
-                });
-            }
+    for (const result of results) {
+        if (finishedEventIds.has(result.eventId) && standingsByParticipant[result.participantId]) {
+            standingsByParticipant[result.participantId].results.push({
+                eventId: result.eventId,
+                points: result.points,
+                isDropped: false,
+            });
         }
     }
 
     Object.values(standingsByParticipant).forEach(standing => {
-        // Mark dropped scores
-        if (settings.dropScores > 0 && standing.results.length > settings.dropScores) {
-            const sortedResultsForDropping = [...standing.results].sort((a, b) => a.points - b.points);
-            const resultsToDrop = sortedResultsForDropping.slice(0, settings.dropScores);
-            
-            const droppedPointsCount = new Map<number, number>();
-            resultsToDrop.forEach(r => {
-                droppedPointsCount.set(r.points, (droppedPointsCount.get(r.points) || 0) + 1);
-            });
+        // Drop Score Logic:
+        // A missed event automatically counts as a drop score.
+        // Therefore, we only drop the worst scores from the *attended* events if the
+        // participant has missed fewer events than the allowed number of drop scores.
+        standing.results.forEach(r => r.isDropped = false);
 
-            standing.results.forEach(r => {
-                if (droppedPointsCount.has(r.points) && droppedPointsCount.get(r.points)! > 0) {
-                    r.isDropped = true;
-                    droppedPointsCount.set(r.points, droppedPointsCount.get(r.points)! - 1);
-                } else {
-                    r.isDropped = false;
-                }
-            });
+        const finishedEventCount = finishedEventIds.size;
+        const attendedEventCount = standing.results.length;
+        const missedEventCount = finishedEventCount - attendedEventCount;
+
+        const scoresToDropFromAttended = Math.max(0, settings.dropScores - missedEventCount);
+
+        if (scoresToDropFromAttended > 0) {
+            // Ensure we don't try to drop more scores than are available
+            const scoresToDropCount = Math.min(scoresToDropFromAttended, attendedEventCount);
+
+            if (scoresToDropCount > 0) {
+                const sortedResultsForDropping = [...standing.results].sort((a, b) => a.points - b.points);
+                const resultsToDrop = sortedResultsForDropping.slice(0, scoresToDropCount);
+                
+                // This logic handles ties correctly by creating a frequency map of points to drop.
+                const droppedPointsCount = new Map<number, number>();
+                resultsToDrop.forEach(r => {
+                    droppedPointsCount.set(r.points, (droppedPointsCount.get(r.points) || 0) + 1);
+                });
+
+                standing.results.forEach(r => {
+                    if (droppedPointsCount.has(r.points) && droppedPointsCount.get(r.points)! > 0) {
+                        r.isDropped = true;
+                        droppedPointsCount.set(r.points, droppedPointsCount.get(r.points)! - 1);
+                    }
+                });
+            }
         }
 
         standing.totalPoints = standing.results.reduce((sum, p) => sum + p.points, 0);
