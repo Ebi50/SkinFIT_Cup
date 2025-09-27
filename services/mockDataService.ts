@@ -45,8 +45,8 @@ export const getInitialSettings = (): Settings => ({
   handicapBasePoints: {
     [PerfClass.A]: 5,
     [PerfClass.B]: 6,
-    [PerfClass.C]: 6,
-    [PerfClass.D]: 4,
+    [PerfClass.C]: 7,
+    [PerfClass.D]: 8,
   },
   dropScores: 1,
   defaultGroupMapping: {

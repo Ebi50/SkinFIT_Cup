@@ -18,6 +18,54 @@ interface EventFormModalProps {
 
 const generateId = () => `id_${Date.now()}_${Math.random().toString(16).slice(2)}`;
 
+const formatSecondsToMMSS = (totalSeconds?: number): string => {
+    // Formats a total number of seconds into a "mm:ss" string.
+    if (totalSeconds === null || totalSeconds === undefined || !isFinite(totalSeconds) || totalSeconds < 0) {
+        return '';
+    }
+    const minutes = Math.floor(totalSeconds / 60);
+    const seconds = totalSeconds % 60;
+    return `${minutes}:${seconds.toString().padStart(2, '0')}`;
+};
+
+const parseInputToSeconds = (value: string): number | undefined => {
+    // Parses a user-entered string (e.g., "22:33" or "2233") into a total number of seconds.
+    const trimmedValue = value.trim();
+    if (trimmedValue === '') return undefined;
+
+    // Handle "mm:ss" format
+    if (trimmedValue.includes(':')) {
+        const parts = trimmedValue.split(':');
+        const minutes = parseInt(parts[0] || '0', 10);
+        const seconds = parseInt(parts[1] || '0', 10);
+
+        if (isNaN(minutes) || isNaN(seconds) || seconds < 0 || seconds >= 60 || minutes < 0) {
+            return undefined; // Invalid format
+        }
+        return minutes * 60 + seconds;
+    }
+
+    // Handle plain numbers, e.g., "2233" -> 22m 33s
+    const justNumbers = trimmedValue.replace(/[^0-9]/g, '');
+    if (justNumbers.length === 0 || justNumbers.length > 6) return undefined;
+
+    if (justNumbers.length <= 2) {
+        // e.g., "59" -> 59 seconds
+        const seconds = parseInt(justNumbers, 10);
+        return seconds < 60 ? seconds : undefined;
+    }
+    
+    // e.g., "123" -> 1m 23s, "2233" -> 22m 33s
+    const secondsPart = parseInt(justNumbers.slice(-2), 10);
+    const minutesPart = parseInt(justNumbers.slice(0, -2), 10);
+    
+    if (isNaN(minutesPart) || isNaN(secondsPart) || secondsPart >= 60 || minutesPart < 0) {
+        return undefined;
+    }
+    
+    return minutesPart * 60 + secondsPart;
+};
+
 
 // Internal component for displaying a single team member row in the MZF editor
 const TeamMemberRow: React.FC<{
@@ -28,7 +76,10 @@ const TeamMemberRow: React.FC<{
     onRemoveMember: (memberId: string) => void;
     getParticipantName: (id: string) => string;
     handicap?: number;
-}> = ({ member, memberResult, onResultChange, onMemberChange, onRemoveMember, getParticipantName, handicap }) => {
+    timeInputValue: string;
+    onTimeInputChange: (resultId: string, value: string) => void;
+    onTimeInputBlur: (resultId: string, value: string) => void;
+}> = ({ member, memberResult, onResultChange, onMemberChange, onRemoveMember, getParticipantName, handicap, timeInputValue, onTimeInputChange, onTimeInputBlur }) => {
     return (
         <div className="grid grid-cols-12 gap-x-3 gap-y-2 items-center p-2 rounded bg-white border">
             <div className="col-span-12 md:col-span-3 font-medium text-gray-800">
@@ -36,14 +87,11 @@ const TeamMemberRow: React.FC<{
             </div>
             <div className="col-span-6 md:col-span-2">
                 <input
-                    type="number"
-                    placeholder="Zeit"
-                    // The nullish coalescing operator (??) is used to handle `timeSeconds` being 0.
-                    // Using `|| ''` would incorrectly display an empty string for a time of 0 seconds.
-                    value={memberResult.timeSeconds ?? ''}
-                    // `parseInt` is called with a radix of 10 for correctness. The result is checked
-                    // for NaN to correctly handle empty input, and 0 is preserved as a valid value.
-                    onChange={e => { const num = parseInt(e.target.value, 10); onResultChange(memberResult.id, 'timeSeconds', isNaN(num) ? undefined : num); }}
+                    type="text"
+                    placeholder="mm:ss"
+                    value={timeInputValue}
+                    onChange={e => onTimeInputChange(memberResult.id, e.target.value)}
+                    onBlur={e => onTimeInputBlur(memberResult.id, e.target.value)}
                     className="w-full p-2 text-sm border border-gray-300 rounded-md"
                 />
             </div>
@@ -100,6 +148,9 @@ export const EventFormModal: React.FC<EventFormModalProps> = ({
     const [isParticipantSelectionOpen, setParticipantSelectionOpen] = useState(false);
     const [targetTeamId, setTargetTeamId] = useState<string | null>(null);
 
+    // State to manage the string value of time inputs for a better UX
+    const [timeInputs, setTimeInputs] = useState<Record<string, string>>({});
+
     const participantMap = useMemo(() => new Map(allParticipants.map(p => [p.id, p])), [allParticipants]);
     
     useEffect(() => {
@@ -108,8 +159,6 @@ export const EventFormModal: React.FC<EventFormModalProps> = ({
             const resultsParticipantIds = new Set(results.map(r => r.participantId));
             const missingResults: Result[] = [];
             
-            // FIX: Explicitly typing `participantId` as a string helps TypeScript's inference engine
-            // inside the loop, preventing it from being treated as `unknown`.
             teamMemberParticipantIds.forEach((participantId: string) => {
                 if (!resultsParticipantIds.has(participantId)) {
                     missingResults.push({
@@ -127,6 +176,32 @@ export const EventFormModal: React.FC<EventFormModalProps> = ({
             }
         }
     }, [formData.eventType, teamMembers, results, event?.id]);
+    
+    useEffect(() => {
+        // This effect synchronizes the local time input string state (`timeInputs`)
+        // with the main `results` state. It ensures that when participants are
+        // added or removed, the UI updates correctly, but it avoids overwriting
+        // what the user is currently typing into an input field.
+        setTimeInputs(currentInputs => {
+            const newInputs = { ...currentInputs };
+            const resultIdsInState = new Set(results.map(r => r.id));
+
+            // Add entries for any new results that aren't in our input state yet.
+            for (const result of results) {
+                if (!currentInputs.hasOwnProperty(result.id)) {
+                    newInputs[result.id] = formatSecondsToMMSS(result.timeSeconds);
+                }
+            }
+
+            // Remove entries from our input state if the corresponding result was deleted.
+            for (const inputId in currentInputs) {
+                if (!resultIdsInState.has(inputId)) {
+                    delete newInputs[inputId];
+                }
+            }
+            return newInputs;
+        });
+    }, [results]);
 
 
     const handleFormChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
@@ -150,10 +225,30 @@ export const EventFormModal: React.FC<EventFormModalProps> = ({
         setResults(prev => [...prev, ...newResults]);
     };
     
-    // Using a generic type `<K extends keyof Result>` makes this handler
-    // fully type-safe, preventing incorrect field names or value types from being passed.
     const handleResultChange = <K extends keyof Result>(resultId: string, field: K, value: Result[K]) => {
         setResults(prev => prev.map(r => r.id === resultId ? { ...r, [field]: value } : r));
+    };
+    
+    const handleTimeInputChange = (resultId: string, value: string) => {
+        // This handler only updates the local string state, allowing free user input.
+        // It does not reformat the value, which prevents the cursor from jumping.
+        // Basic sanitization prevents obviously invalid formats.
+        const sanitizedValue = value.replace(/[^0-9:]/g, '');
+        if ((sanitizedValue.match(/:/g) || []).length > 1 || sanitizedValue.length > 7) {
+            return;
+        }
+        setTimeInputs(prev => ({ ...prev, [resultId]: sanitizedValue }));
+    };
+
+    const handleTimeInputBlur = (resultId: string, value: string) => {
+        // On blur, parse the user's raw string input into seconds.
+        const totalSeconds = parseInputToSeconds(value);
+        
+        // Update the main 'results' state with the canonical numeric value.
+        handleResultChange(resultId, 'timeSeconds', totalSeconds);
+        
+        // Update the local input state with a clean, formatted 'mm:ss' string.
+        setTimeInputs(prev => ({ ...prev, [resultId]: formatSecondsToMMSS(totalSeconds) }));
     };
 
     const handleRemoveResult = (resultId: string) => {
@@ -169,15 +264,13 @@ export const EventFormModal: React.FC<EventFormModalProps> = ({
         setTeams(prev => [...prev, newTeam]);
     };
 
-    // Using a generic type `<K extends keyof Team>` makes this handler
-    // fully type-safe, preventing incorrect field names or value types from being passed.
     const handleTeamChange = <K extends keyof Team>(teamId: string, field: K, value: Team[K]) => {
+        // FIX: Replaced incorrect variable `r` with `t`.
         setTeams(prev => prev.map(t => t.id === teamId ? { ...t, [field]: value } : t));
     };
     
-    // Using a generic type `<K extends keyof TeamMember>` makes this handler
-    // fully type-safe, preventing incorrect field names or value types from being passed.
     const handleTeamMemberChange = <K extends keyof TeamMember>(memberId: string, field: K, value: TeamMember[K]) => {
+        // FIX: Replaced incorrect variable `r` with `tm`.
         setTeamMembers(prev => prev.map(tm => tm.id === memberId ? { ...tm, [field]: value } : tm));
     };
 
@@ -362,7 +455,7 @@ export const EventFormModal: React.FC<EventFormModalProps> = ({
     
                 <div className="grid grid-cols-12 gap-2 items-center mb-2 px-2 text-sm font-semibold text-gray-600">
                     <div className="col-span-3">Teilnehmer</div>
-                    <div className="col-span-2">Zeit (sek)</div>
+                    <div className="col-span-2">Zeit (mm:ss)</div>
                     <div className="col-span-2">Angep. Zeit</div>
                     <div className="col-span-2">Material</div>
                     <div className="col-span-2">Bonus-Rang</div>
@@ -383,10 +476,17 @@ export const EventFormModal: React.FC<EventFormModalProps> = ({
                             <div className="col-span-3 font-medium">{getParticipantName(result.participantId)}</div>
         
                             <div className="col-span-2">
-                                <input type="number" placeholder="Zeit" value={result.timeSeconds ?? ''} onChange={(e) => { const num = parseInt(e.target.value, 10); handleResultChange(result.id, 'timeSeconds', isNaN(num) ? undefined : num); }} className="w-full p-2 border border-gray-300 rounded-md"/>
+                                <input
+                                    type="text"
+                                    placeholder="mm:ss"
+                                    value={timeInputs[result.id] ?? ''}
+                                    onChange={e => handleTimeInputChange(result.id, e.target.value)}
+                                    onBlur={e => handleTimeInputBlur(result.id, e.target.value)}
+                                    className="w-full p-2 border border-gray-300 rounded-md"
+                                />
                             </div>
                             <div className="col-span-2">
-                                <input type="text" value={adjustedTime !== null ? `${adjustedTime.toFixed(0)}s` : '-'} readOnly className="w-full p-2 bg-gray-100 border-gray-200 rounded-md text-center font-semibold text-gray-700"/>
+                                <input type="text" value={adjustedTime !== null ? `${formatSecondsToMMSS(adjustedTime)}` : '-'} readOnly className="w-full p-2 bg-gray-100 border-gray-200 rounded-md text-center font-semibold text-gray-700"/>
                             </div>
                             <div className="col-span-2 space-y-1">
                                 <div className="flex items-center text-xs">
@@ -445,7 +545,7 @@ export const EventFormModal: React.FC<EventFormModalProps> = ({
                                     <input type="text" value={team.name} onChange={e => handleTeamChange(team.id, 'name', e.target.value)} className="p-2 border border-gray-300 rounded-md font-semibold text-lg flex-grow" aria-label="Teamname"/>
                                     <div className="text-right ml-4">
                                         <div className="text-sm text-gray-500">Berechnete Zeit</div>
-                                        <div className="text-xl font-bold text-primary-dark">{isFinite(calculatedTime) ? `${calculatedTime.toFixed(0)}s` : 'N/A'}</div>
+                                        <div className="text-xl font-bold text-primary-dark">{isFinite(calculatedTime) ? `${formatSecondsToMMSS(calculatedTime)}` : 'N/A'}</div>
                                     </div>
                                     <button onClick={() => handleRemoveTeam(team.id)} className="ml-4 text-red-500 hover:text-red-700 p-1" aria-label={`Team ${team.name} löschen`}>
                                         <TrashIcon />
@@ -454,7 +554,7 @@ export const EventFormModal: React.FC<EventFormModalProps> = ({
                                 
                                 <div className="hidden md:grid grid-cols-12 gap-x-3 items-center px-2 pb-2 text-xs font-semibold text-gray-500 border-b mb-2">
                                     <div className="col-span-3">Mitglied</div>
-                                    <div className="col-span-2">Zeit (s)</div>
+                                    <div className="col-span-2">Zeit (mm:ss)</div>
                                     <div className="col-span-3">Material-Handicap</div>
                                     <div className="col-span-1">Penalty</div>
                                     <div className="col-span-1 text-center">DNF</div>
@@ -476,6 +576,9 @@ export const EventFormModal: React.FC<EventFormModalProps> = ({
                                                 onRemoveMember={handleRemoveTeamMember}
                                                 getParticipantName={getParticipantName}
                                                 handicap={individualHandicaps.get(member.participantId)}
+                                                timeInputValue={timeInputs[memberResult.id] ?? ''}
+                                                onTimeInputChange={handleTimeInputChange}
+                                                onTimeInputBlur={handleTimeInputBlur}
                                             />
                                         );
                                     })}
@@ -543,6 +646,165 @@ export const EventFormModal: React.FC<EventFormModalProps> = ({
                             ? teamMembers.map(tm => tm.participantId)
                             : results.map(r => r.participantId)
                     }
+                />
+            )}
+        </div>
+    );
+};
+
+// --- Team Edit Modal ---
+
+interface TeamEditModalProps {
+    event: Event;
+    initialTeams: Team[];
+    initialTeamMembers: TeamMember[];
+    allParticipants: Participant[];
+    onClose: () => void;
+    onSave: (updatedTeams: Team[], updatedTeamMembers: TeamMember[]) => void;
+}
+
+export const TeamEditModal: React.FC<TeamEditModalProps> = ({
+    event,
+    initialTeams,
+    initialTeamMembers,
+    allParticipants,
+    onClose,
+    onSave,
+}) => {
+    const [teams, setTeams] = useState<Team[]>(() => JSON.parse(JSON.stringify(initialTeams)));
+    const [teamMembers, setTeamMembers] = useState<TeamMember[]>(() => JSON.parse(JSON.stringify(initialTeamMembers)));
+    
+    const [isParticipantSelectionOpen, setParticipantSelectionOpen] = useState(false);
+    const [targetTeamId, setTargetTeamId] = useState<string | null>(null);
+
+    const participantMap = useMemo(() => new Map(allParticipants.map(p => [p.id, p])), [allParticipants]);
+    const getParticipantName = (id: string) => {
+        const p = participantMap.get(id);
+        return p ? `${p.lastName}, ${p.firstName}` : 'Unbekannt';
+    };
+
+    const handleTeamNameChange = (teamId: string, newName: string) => {
+        setTeams(prev => prev.map(t => t.id === teamId ? { ...t, name: newName } : t));
+    };
+
+    const handlePenaltyChange = (memberId: string, penalty: boolean) => {
+        setTeamMembers(prev => prev.map(tm => tm.id === memberId ? { ...tm, penaltyMinus2: penalty } : tm));
+    };
+
+    const handleRemoveMember = (memberId: string) => {
+        setTeamMembers(prev => prev.filter(tm => tm.id !== memberId));
+    };
+
+    const handleOpenParticipantSelection = (teamId: string) => {
+        setTargetTeamId(teamId);
+        setParticipantSelectionOpen(true);
+    };
+
+    const handleAddMembers = (participantIds: string[]) => {
+        if (!targetTeamId) return;
+        const newMembers: TeamMember[] = participantIds.map(pid => ({
+            id: generateId(),
+            teamId: targetTeamId,
+            participantId: pid,
+            penaltyMinus2: false,
+        }));
+        setTeamMembers(prev => [...prev, ...newMembers]);
+        setParticipantSelectionOpen(false);
+        setTargetTeamId(null);
+    };
+
+    const handleAddNewTeam = () => {
+        const newTeam: Team = {
+            id: generateId(),
+            eventId: event.id,
+            name: `Neues Team ${teams.length + 1}`,
+        };
+        setTeams(prev => [...prev, newTeam]);
+    };
+
+    const handleDeleteTeam = (teamId: string) => {
+        if (window.confirm("Möchten Sie dieses Team und alle Mitglieder daraus wirklich entfernen?")) {
+            setTeams(prev => prev.filter(t => t.id !== teamId));
+            setTeamMembers(prev => prev.filter(tm => tm.teamId !== teamId));
+        }
+    };
+
+    const handleSaveClick = () => {
+        onSave(teams, teamMembers);
+    };
+
+    return (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex justify-center items-center z-[70]">
+            <div className="bg-white rounded-xl shadow-2xl p-8 w-full max-w-4xl max-h-[90vh] flex flex-col">
+                <div className="flex justify-between items-center mb-6 flex-shrink-0">
+                    <div>
+                        <h2 className="text-2xl font-bold text-secondary">Teams bearbeiten</h2>
+                        <p className="text-gray-500">{event.name}</p>
+                    </div>
+                    <button onClick={onClose} className="text-gray-500 hover:text-gray-800"><CloseIcon /></button>
+                </div>
+
+                <div className="flex-grow overflow-y-auto space-y-4 -mx-4 px-4">
+                    {teams.map(team => (
+                        <div key={team.id} className="p-4 border rounded-lg bg-gray-50/50">
+                            <div className="flex justify-between items-center gap-4 mb-3 border-b pb-2">
+                                <input
+                                    type="text"
+                                    value={team.name}
+                                    onChange={e => handleTeamNameChange(team.id, e.target.value)}
+                                    className="p-2 border border-gray-300 rounded-md font-semibold text-lg flex-grow"
+                                    aria-label="Teamname"
+                                />
+                                <button onClick={() => handleDeleteTeam(team.id)} className="text-red-500 hover:text-red-700 p-1 flex-shrink-0" aria-label={`Team ${team.name} löschen`}>
+                                    <TrashIcon />
+                                </button>
+                            </div>
+                            <div className="space-y-2">
+                                {teamMembers.filter(tm => tm.teamId === team.id).map(member => (
+                                    <div key={member.id} className="flex items-center justify-between p-2 bg-white rounded shadow-sm">
+                                        <span className="font-medium">{getParticipantName(member.participantId)}</span>
+                                        <div className="flex items-center space-x-4">
+                                            <div className="flex items-center">
+                                                <input
+                                                    type="checkbox"
+                                                    id={`penalty-${member.id}`}
+                                                    checked={member.penaltyMinus2}
+                                                    onChange={e => handlePenaltyChange(member.id, e.target.checked)}
+                                                    className="h-4 w-4 text-primary focus:ring-primary-dark border-gray-300 rounded"
+                                                />
+                                                <label htmlFor={`penalty-${member.id}`} className="ml-2 text-sm text-gray-600">Penalty (-2 Pkt.)</label>
+                                            </div>
+                                            <button onClick={() => handleRemoveMember(member.id)} className="text-red-500 hover:text-red-700 p-1" aria-label="Mitglied entfernen">
+                                                <TrashIcon className="w-4 h-4" />
+                                            </button>
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                            <button onClick={() => handleOpenParticipantSelection(team.id)} className="mt-3 text-sm text-blue-600 hover:text-blue-800 font-semibold py-1 px-2 rounded-lg border border-blue-600 flex items-center space-x-1 hover:bg-blue-50">
+                                <UsersIcon className="w-4 h-4" /> <span>Mitglieder hinzufügen</span>
+                            </button>
+                        </div>
+                    ))}
+                </div>
+                
+                <div className="mt-4 flex-shrink-0">
+                     <button onClick={handleAddNewTeam} className="text-primary hover:text-primary-dark font-semibold py-2 px-4 rounded-lg border border-primary flex items-center space-x-2 hover:bg-primary/10">
+                        <PlusIcon className="w-5 h-5" /> <span>Neues Team hinzufügen</span>
+                    </button>
+                </div>
+
+                <div className="flex justify-end space-x-4 mt-6 pt-4 border-t flex-shrink-0">
+                    <button onClick={onClose} className="bg-gray-200 hover:bg-gray-300 text-gray-800 font-bold py-2 px-4 rounded-lg">Abbrechen</button>
+                    <button onClick={handleSaveClick} className="bg-primary hover:bg-primary-dark text-white font-bold py-2 px-4 rounded-lg">Änderungen speichern</button>
+                </div>
+            </div>
+            {isParticipantSelectionOpen && (
+                 <ParticipantSelectionModal
+                    onClose={() => setParticipantSelectionOpen(false)}
+                    onAddParticipants={handleAddMembers}
+                    allParticipants={allParticipants}
+                    alreadySelectedIds={teamMembers.map(tm => tm.participantId)}
                 />
             )}
         </div>

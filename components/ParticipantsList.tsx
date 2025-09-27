@@ -2,19 +2,20 @@
 
 import React from 'react';
 import { Participant, Gender, PerfClass } from '../types';
-import { UploadIcon, UsersIcon, PencilIcon, TrashIcon, CheckIcon } from './icons';
+import { UploadIcon, UsersIcon, PencilIcon, TrashIcon, CheckIcon, PlusIcon } from './icons';
 
 interface ParticipantsListProps {
   participants: Participant[];
   onOpenImportModal: () => void;
   onEditParticipant: (participant: Participant) => void;
   onDeleteParticipant: (participantId: string) => void;
+  onNewParticipant: () => void;
 }
 
 const getGenderLabel = (gender: Gender) => (gender === Gender.Male ? 'Männlich' : 'Weiblich');
 const getPerfClassLabel = (perfClass: PerfClass) => `Klasse ${perfClass}`;
 
-export const ParticipantsList: React.FC<ParticipantsListProps> = ({ participants, onOpenImportModal, onEditParticipant, onDeleteParticipant }) => {
+export const ParticipantsList: React.FC<ParticipantsListProps> = ({ participants, onOpenImportModal, onEditParticipant, onDeleteParticipant, onNewParticipant }) => {
   return (
     <div>
       <div className="flex justify-between items-center mb-6">
@@ -22,13 +23,22 @@ export const ParticipantsList: React.FC<ParticipantsListProps> = ({ participants
           <UsersIcon />
           <h1 className="text-3xl font-bold text-secondary">Teilnehmer</h1>
         </div>
-        <button
-          onClick={onOpenImportModal}
-          className="bg-primary hover:bg-primary-dark text-white font-bold py-2 px-4 rounded-lg flex items-center space-x-2 transition-transform transform hover:scale-105"
-        >
-          <UploadIcon className="w-5 h-5" />
-          <span>Importieren</span>
-        </button>
+        <div className="flex items-center space-x-2">
+           <button
+            onClick={onNewParticipant}
+            className="bg-secondary hover:bg-gray-700 text-white font-bold py-2 px-4 rounded-lg flex items-center space-x-2 transition-transform transform hover:scale-105"
+          >
+            <PlusIcon className="w-5 h-5" />
+            <span>Hinzufügen</span>
+          </button>
+          <button
+            onClick={onOpenImportModal}
+            className="bg-primary hover:bg-primary-dark text-white font-bold py-2 px-4 rounded-lg flex items-center space-x-2 transition-transform transform hover:scale-105"
+          >
+            <UploadIcon className="w-5 h-5" />
+            <span>Importieren</span>
+          </button>
+        </div>
       </div>
 
       <div className="bg-white rounded-xl shadow-lg overflow-hidden">

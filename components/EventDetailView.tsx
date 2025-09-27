@@ -1,6 +1,6 @@
 import React, { useMemo, useState, useEffect } from 'react';
 import { Event, Participant, Result, Team, TeamMember, Settings, EventType, GroupLabel } from '../types';
-import { ArrowLeftIcon, CalendarIcon } from './icons';
+import { ArrowLeftIcon, CalendarIcon, PencilIcon } from './icons';
 import { calculateHandicap, getParticipantGroup } from '../services/scoringService';
 
 interface EventDetailViewProps {
@@ -11,6 +11,7 @@ interface EventDetailViewProps {
     teamMembers: TeamMember[];
     settings: Settings;
     onBack: () => void;
+    onEditTeams: (eventId: string) => void;
 }
 
 const eventTypeLabels: Record<EventType, string> = {
@@ -24,13 +25,13 @@ const formatDate = (dateString: string) => new Intl.DateTimeFormat('de-DE', { da
 
 // Helper function to determine placement points, mirrored from scoringService
 const getPlacementPoints = (rank: number): number => {
-    if (rank <= 10) return 8;
-    if (rank <= 20) return 7;
-    if (rank <= 30) return 6;
+    if (rank <= 3) return 8;
+    if (rank <= 6) return 7;
+    if (rank <= 10) return 6;
     return 5;
 };
 
-export const EventDetailView: React.FC<EventDetailViewProps> = ({ event, participants, results, teams, teamMembers, settings, onBack }) => {
+export const EventDetailView: React.FC<EventDetailViewProps> = ({ event, participants, results, teams, teamMembers, settings, onBack, onEditTeams }) => {
     
     const [filterStatus, setFilterStatus] = useState<'all' | 'finished' | 'dnf'>('all');
     const [searchTerm, setSearchTerm] = useState('');
@@ -318,7 +319,14 @@ export const EventDetailView: React.FC<EventDetailViewProps> = ({ event, partici
         return (
             <div className="space-y-6">
                 {displayedTeams.map((team) => {
-                    const teamPoints = isFinite(team.adjustedTime) ? getPlacementPoints(team.rank) : 0;
+                    const teamRank = team.rank;
+                    let teamPoints = 0;
+                    if (isFinite(team.adjustedTime)) {
+                        teamPoints = getPlacementPoints(teamRank);
+                        if (teamRank <= settings.winnerPoints.length) {
+                            teamPoints += settings.winnerPoints[teamRank - 1];
+                        }
+                    }
                     const displayedMembers = teamMembers
                         .filter(tm => tm.teamId === team.id)
                         .filter(member => {
@@ -557,9 +565,20 @@ export const EventDetailView: React.FC<EventDetailViewProps> = ({ event, partici
                 <span>Zurück zur Event-Liste</span>
             </button>
 
-            <div className="flex items-center space-x-3 mb-2">
-                <CalendarIcon />
-                <h1 className="text-3xl font-bold text-secondary">{event.name}</h1>
+            <div className="flex justify-between items-center mb-2">
+                <div className="flex items-center space-x-3">
+                    <CalendarIcon />
+                    <h1 className="text-3xl font-bold text-secondary">{event.name}</h1>
+                </div>
+                {event.eventType === EventType.MZF && (
+                    <button
+                        onClick={() => onEditTeams(event.id)}
+                        className="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded-lg flex items-center space-x-2 transition-transform transform hover:scale-105"
+                    >
+                        <PencilIcon className="w-5 h-5" />
+                        <span>Teams bearbeiten</span>
+                    </button>
+                )}
             </div>
              <div className="flex items-center space-x-6 text-gray-600 mb-6 border-b pb-4">
                 <span><strong>Datum:</strong> {formatDate(event.date)}</span>

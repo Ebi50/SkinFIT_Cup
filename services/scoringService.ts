@@ -14,9 +14,9 @@ export const getParticipantGroup = (participant: Participant): GroupLabel => {
 // --- Specific Calculators ---
 
 const getPlacementPoints = (rank: number): number => {
-    if (rank <= 10) return 8;
-    if (rank <= 20) return 7;
-    if (rank <= 30) return 6;
+    if (rank <= 3) return 8;
+    if (rank <= 6) return 7;
+    if (rank <= 10) return 6;
     return 5;
 };
 
@@ -90,9 +90,9 @@ const calculateTimeTrialPoints = (
     const rankOverall = index + 1;
     let points = getPlacementPoints(rankOverall);
 
-    // Add bonus points for manually assigned winner ranks (1st, 2nd, 3rd)
-    if (rankedResult.winnerRank && rankedResult.winnerRank <= settings.winnerPoints.length) {
-      points += settings.winnerPoints[rankedResult.winnerRank - 1];
+    // Add winner points bonus for top 3 finishers
+    if (rankOverall <= settings.winnerPoints.length) {
+      points += settings.winnerPoints[rankOverall - 1];
     }
 
     // Update the result in our map with the calculated points and rank.
@@ -191,7 +191,13 @@ const calculateTeamTimeTrialPoints = (
     rankedTeams.forEach((team, index) => {
         if (team.adjustedTime === Infinity) return;
         const rank = index + 1;
-        const points = getPlacementPoints(rank);
+        let points = getPlacementPoints(rank);
+
+        // Add winner points bonus for top 3 teams
+        if (rank <= settings.winnerPoints.length) {
+            points += settings.winnerPoints[rank - 1];
+        }
+        
         teamPoints.set(team.id, points);
     });
 

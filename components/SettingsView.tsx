@@ -1,5 +1,5 @@
 import React from 'react';
-import { Settings, AgeHandicapRule } from '../types';
+import { Settings, AgeHandicapRule, PerfClass } from '../types';
 import { CogIcon, PlusIcon, TrashIcon } from './icons';
 
 interface SettingsViewProps {
@@ -40,6 +40,17 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ settings, onSettings
       },
     };
     onSettingsChange({ ...settings, timeTrialBonuses: newBonuses });
+  };
+  
+  const handleHandicapBasePointsChange = (pClass: PerfClass, value: string) => {
+    const points = parseInt(value, 10);
+    if (!isNaN(points) && points >= 0) {
+        const newBasePoints = {
+            ...settings.handicapBasePoints,
+            [pClass]: points,
+        };
+        onSettingsChange({ ...settings, handicapBasePoints: newBasePoints });
+    }
   };
 
   const handleHandicapSettingChange = (
@@ -91,6 +102,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ settings, onSettings
     });
   };
 
+  const perfClasses: PerfClass[] = [PerfClass.A, PerfClass.B, PerfClass.C, PerfClass.D];
 
   return (
     <div>
@@ -239,6 +251,30 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ settings, onSettings
                     </button>
                 </div>
             </div>
+        </div>
+        
+        {/* Handicap Race Settings */}
+        <div className="bg-white rounded-xl shadow-lg p-6">
+          <h3 className="text-xl font-bold text-secondary mb-4 border-b pb-2">Handicap-Rennen</h3>
+          <div>
+            <label className="block text-md font-medium text-gray-700">Basis-Punkte pro Leistungsklasse</label>
+            <p className="text-sm text-gray-500 mb-2">Punkte, die ein Finisher der Zielgruppe 1 in der jeweiligen Klasse erhält.</p>
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+              {perfClasses.map((pClass) => (
+                <div key={pClass}>
+                  <label htmlFor={`handicap-points-${pClass}`} className="block text-sm font-medium text-gray-600">Klasse {pClass}</label>
+                  <input
+                    type="number"
+                    id={`handicap-points-${pClass}`}
+                    value={settings.handicapBasePoints[pClass] || 0}
+                    min="0"
+                    onChange={(e) => handleHandicapBasePointsChange(pClass, e.target.value)}
+                    className="mt-1 p-2 w-full border border-gray-300 rounded-md"
+                  />
+                </div>
+              ))}
+            </div>
+          </div>
         </div>
 
       </div>

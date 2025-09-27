@@ -8,9 +8,10 @@ interface ParticipantFormModalProps {
     onClose: () => void;
     onSave: (participant: Participant) => void;
     participant: Participant;
+    isNew: boolean;
 }
 
-export const ParticipantFormModal: React.FC<ParticipantFormModalProps> = ({ onClose, onSave, participant }) => {
+export const ParticipantFormModal: React.FC<ParticipantFormModalProps> = ({ onClose, onSave, participant, isNew }) => {
     const [formData, setFormData] = useState<Participant>(participant);
 
     const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
@@ -35,7 +36,7 @@ export const ParticipantFormModal: React.FC<ParticipantFormModalProps> = ({ onCl
         <div className="fixed inset-0 bg-black bg-opacity-50 flex justify-center items-center z-50">
             <div className="bg-white rounded-xl shadow-2xl p-8 w-full max-w-lg">
                 <div className="flex justify-between items-center mb-6">
-                    <h2 className="text-2xl font-bold text-secondary">Teilnehmer bearbeiten</h2>
+                    <h2 className="text-2xl font-bold text-secondary">{isNew ? 'Neuen Teilnehmer erstellen' : 'Teilnehmer bearbeiten'}</h2>
                     <button onClick={onClose} className="text-gray-500 hover:text-gray-800"><CloseIcon /></button>
                 </div>
 
@@ -57,6 +58,20 @@ export const ParticipantFormModal: React.FC<ParticipantFormModalProps> = ({ onCl
                     <div>
                         <label htmlFor="phone" className="block text-sm font-medium text-gray-700">Telefon</label>
                         <input type="tel" id="phone" name="phone" value={formData.phone} onChange={handleChange} className="mt-1 p-2 border border-gray-300 rounded-md w-full" />
+                    </div>
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                        <div>
+                            <label htmlFor="club" className="block text-sm font-medium text-gray-700">Verein <span className="text-gray-400">(Optional)</span></label>
+                            <input type="text" id="club" name="club" value={formData.club || ''} onChange={handleChange} className="mt-1 p-2 border border-gray-300 rounded-md w-full" />
+                        </div>
+                        <div>
+                            <label htmlFor="startNumber" className="block text-sm font-medium text-gray-700">Startnummer <span className="text-gray-400">(Optional)</span></label>
+                            <input type="text" id="startNumber" name="startNumber" value={formData.startNumber || ''} onChange={handleChange} className="mt-1 p-2 border border-gray-300 rounded-md w-full" />
+                        </div>
+                        <div>
+                            <label htmlFor="nationality" className="block text-sm font-medium text-gray-700">Nationalität <span className="text-gray-400">(Optional)</span></label>
+                            <input type="text" id="nationality" name="nationality" value={formData.nationality || ''} onChange={handleChange} className="mt-1 p-2 border border-gray-300 rounded-md w-full" />
+                        </div>
                     </div>
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                         <div>

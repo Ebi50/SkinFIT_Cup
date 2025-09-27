@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
-import { Participant, Event, Result, Team, TeamMember, Settings, View, EventType } from './types';
+import { Participant, Event, Result, Team, TeamMember, Settings, View, EventType, PerfClass, Gender } from './types';
 import { getMockParticipants, getMockEvents, getMockResults, getMockTeams, getMockTeamMembers, getInitialSettings } from './services/mockDataService';
 import { calculatePointsForEvent } from './services/scoringService';
 import { Standings } from './components/Standings';
@@ -7,7 +7,7 @@ import { ParticipantsList } from './components/ParticipantsList';
 import { ParticipantImportModal } from './components/ParticipantImportModal';
 import { ParticipantFormModal } from './components/ParticipantFormModal';
 import { EventsList } from './components/EventsList';
-import { EventFormModal } from './components/EventFormModal';
+import { EventFormModal, TeamEditModal } from './components/EventFormModal';
 import { NewSeasonModal } from './components/NewSeasonModal';
 import { DashboardIcon, UsersIcon, CalendarIcon, ChartBarIcon, CogIcon } from './components/icons';
 import { SettingsView } from './components/SettingsView';
@@ -77,6 +77,10 @@ const App: React.FC = () => {
   
   const [selectedEventId, setSelectedEventId] = useState<string | null>(null);
 
+  // State for the new Team Edit Modal
+  const [isTeamEditModalOpen, setTeamEditModalOpen] = useState(false);
+  const [editingEventForTeams, setEditingEventForTeams] = useState<Event | null>(null);
+
 
   const recalculateAllPoints = useCallback(() => {
     setResults(currentResults => {
@@ -124,11 +128,14 @@ const App: React.FC = () => {
     setSelectedSeason(seasons[0] || new Date().getFullYear());
   }, []);
 
+  // BUG FIX: Added `teams` and `teamMembers` to the dependency array.
+  // This ensures that points are recalculated whenever team compositions change,
+  // for example, after a participant is deleted.
   useEffect(() => {
     if (participants.length > 0 && events.length > 0) {
       recalculateAllPoints();
     }
-  }, [participants, events, settings, recalculateAllPoints]);
+  }, [participants, events, settings, teams, teamMembers, recalculateAllPoints]);
   
   const eventsForSeason = useMemo(() => {
     if (!selectedSeason) return [];
@@ -151,194 +158,253 @@ const App: React.FC = () => {
     return teamMembers.filter(tm => teamIdsForSeason.has(tm.teamId));
   }, [teamMembers, teamIdsForSeason]);
 
-  const handleImportParticipants = (importedParticipants: Omit<Participant, 'id'>[]) => {
-    const existingEmails = new Map(participants.map(p => [p.email.toLowerCase(), p]));
-    const newParticipants: Participant[] = [];
-    const updatedParticipants = [...participants];
+  const handleImportParticipants = useCallback((importedParticipants: Omit<Participant, 'id'>[]) => {
+    const importedByEmail = new Map(
+      importedParticipants.map(p => [p.email.toLowerCase(), p])
+    );
+  
+    setParticipants(currentParticipants => {
+        const existingEmails = new Set(currentParticipants.map(p => p.email.toLowerCase()));
 
-    importedParticipants.forEach(importedP => {
-        const existingParticipant = existingEmails.get(importedP.email.toLowerCase());
-        if (existingParticipant) {
-            // Update existing participant
-            const index = updatedParticipants.findIndex(p => p.id === existingParticipant.id);
-            if(index !== -1) {
-                updatedParticipants[index] = { ...existingParticipant, ...importedP };
-            }
-        } else {
-            // Add new participant
-            const newId = `p${Date.now()}${Math.random().toString(16).slice(2)}`;
-            newParticipants.push({ ...importedP, id: newId });
-        }
-    });
+        const updatedParticipants = currentParticipants.map(p => {
+          const importedData = importedByEmail.get(p.email.toLowerCase());
+          return importedData ? { ...p, ...importedData } : p;
+        });
     
-    setParticipants([...updatedParticipants, ...newParticipants]);
-    setImportModalOpen(false);
-  };
+        const newParticipants: Participant[] = importedParticipants
+          .filter(p => !existingEmails.has(p.email.toLowerCase()))
+          .map(p => ({
+            ...p,
+            id: `p${Date.now()}${Math.random().toString(16).slice(2)}`,
+          }));
+        
+        return [...updatedParticipants, ...newParticipants];
+    });
 
-  const handleOpenEventModal = (event?: Event) => {
+    setImportModalOpen(false);
+  }, []);
+
+  const handleOpenEventModal = useCallback((event?: Event) => {
     setEditingEvent(event);
     setEventModalOpen(true);
-  };
+  }, []);
 
-  const handleCloseEventModal = () => {
+  const handleCloseEventModal = useCallback(() => {
     setEditingEvent(undefined);
     setEventModalOpen(false);
-  };
+  }, []);
 
-  const handleSaveEvent = (
+  const handleSaveEvent = useCallback((
       eventData: Omit<Event, 'id' | 'season'> & { id?: string },
-      eventResults: Result[],
-      eventTeams: Team[],
-      eventTeamMembers: TeamMember[]
+      eventResultsFromModal: Result[],
+      eventTeamsFromModal: Team[],
+      eventTeamMembersFromModal: TeamMember[]
   ) => {
       const isEditing = !!eventData.id;
       const eventId = eventData.id || `e${Date.now()}`;
-
-      // 1. Update Events state
+  
+      // Find the original season to preserve it
+      const originalEvent = isEditing ? events.find(e => e.id === eventId) : null;
+      const season = originalEvent ? originalEvent.season : selectedSeason!;
+      
+      // Construct the final event object that will be saved
+      const finalEvent: Event = { 
+          name: eventData.name,
+          date: eventData.date,
+          location: eventData.location,
+          eventType: eventData.eventType,
+          notes: eventData.notes,
+          finished: eventData.finished,
+          id: eventId, 
+          season 
+      };
+  
+      // CRITICAL FIX: Calculate points for the saved event immediately using the final event data.
+      // This ensures that changes like setting 'finished' or updating a 'winnerRank' are
+      // instantly reflected in the points before the state is updated.
+      const calculatedResults = calculatePointsForEvent(
+          finalEvent,
+          eventResultsFromModal,
+          participants,
+          eventTeamsFromModal,
+          eventTeamMembersFromModal,
+          settings
+      );
+  
+      // Now update all states with the final, calculated data
       setEvents(prevEvents => {
-        const originalEvent = isEditing ? prevEvents.find(e => e.id === eventId) : null;
-        const season = originalEvent ? originalEvent.season : selectedSeason!;
-        
-        const updatedEvent: Event = { 
-            name: eventData.name,
-            date: eventData.date,
-            location: eventData.location,
-            eventType: eventData.eventType,
-            notes: eventData.notes,
-            finished: eventData.finished,
-            id: eventId, 
-            season 
-        };
-
-        if (isEditing) {
-            return prevEvents.map(e => e.id === eventId ? updatedEvent : e);
-        } else {
-            return [...prevEvents, updatedEvent];
-        }
+        return isEditing ? prevEvents.map(e => e.id === eventId ? finalEvent : e) : [...prevEvents, finalEvent];
       });
       
-      // 2. Update Results state
-      const finalEventResults = eventResults.map(r => ({ ...r, eventId }));
+      const finalEventResults = calculatedResults.map(r => ({ ...r, eventId }));
       setResults(prevResults => [...prevResults.filter(r => r.eventId !== eventId), ...finalEventResults]);
       
-      // 3. Update Teams and Team Members state.
-      // We must remove all old teams AND their members for this event, then add the new ones.
-      // This refactored approach is more explicit and robust, preventing type errors.
-      // FIX: The original logic was complex and prone to type inference errors, leading to the reported issues.
+      const oldTeamIdsForEvent = new Set(teams.filter(t => t.eventId === eventId).map(t => t.id));
+  
       setTeams(prevTeams => {
-          const teamsToKeep = prevTeams.filter((t: Team) => t.eventId !== eventId);
-          const finalEventTeams = eventTeams.map((t: Team) => ({ ...t, eventId }));
+          const teamsToKeep = prevTeams.filter(t => t.eventId !== eventId);
+          const finalEventTeams = eventTeamsFromModal.map(t => ({ ...t, eventId }));
           return [...teamsToKeep, ...finalEventTeams];
       });
-
+  
       setTeamMembers(prevMembers => {
-        const oldTeamIdsForEvent = new Set(teams.filter((t: Team) => t.eventId === eventId).map((t: Team) => t.id));
-        const membersToKeep = prevMembers.filter((tm: TeamMember) => !oldTeamIdsForEvent.has(tm.teamId));
-        return [...membersToKeep, ...eventTeamMembers];
+        const membersToKeep = prevMembers.filter(tm => !oldTeamIdsForEvent.has(tm.teamId));
+        return [...membersToKeep, ...eventTeamMembersFromModal];
       });
       
       handleCloseEventModal();
-  };
+  }, [events, selectedSeason, participants, settings, teams, handleCloseEventModal]);
   
   const handleDeleteEvent = (eventId: string) => {
     if (!window.confirm("Möchten Sie dieses Event und alle zugehörigen Ergebnisse wirklich löschen? Dies kann nicht rückgängig gemacht werden.")) {
       return;
     }
 
-    // --- FIX for Stale State ---
-    // 1. Get all necessary information BEFORE updating state.
-    // This uses the current, correct 'teams' state to find which members to delete.
-    const teamIdsToDelete = new Set(
-        teams.filter(t => t.eventId === eventId).map(t => t.id)
-    );
-
-    // 2. Perform all state updates using functional updates for safety.
-    // Each filter is now simple and independent.
     setEvents(currentEvents => currentEvents.filter(e => e.id !== eventId));
     setResults(currentResults => currentResults.filter(r => r.eventId !== eventId));
-    setTeams(currentTeams => currentTeams.filter(t => t.eventId !== eventId));
     
-    if (teamIdsToDelete.size > 0) {
-        setTeamMembers(currentTeamMembers =>
-            currentTeamMembers.filter(tm => !teamIdsToDelete.has(tm.teamId))
+    setTeams(currentTeams => {
+        const teamIdsToDelete = new Set(
+            currentTeams.filter(t => t.eventId === eventId).map(t => t.id)
         );
-    }
+
+        if (teamIdsToDelete.size > 0) {
+            setTeamMembers(currentTeamMembers =>
+                currentTeamMembers.filter(tm => !teamIdsToDelete.has(tm.teamId))
+            );
+        }
+        
+        return currentTeams.filter(t => t.eventId !== eventId);
+    });
   };
 
-  const handleCreateSeason = (year: number) => {
+  const handleCreateSeason = useCallback((year: number) => {
     if (!availableSeasons.includes(year)) {
         const updatedSeasons = [...availableSeasons, year].sort((a,b) => b-a);
         setAvailableSeasons(updatedSeasons);
         setSelectedSeason(year);
     }
     setNewSeasonModalOpen(false);
-  };
+  }, [availableSeasons]);
 
-  const handleSettingsChange = (newSettings: Settings) => {
+  const handleSettingsChange = useCallback((newSettings: Settings) => {
     setSettings(newSettings);
+  }, []);
+
+  const handleOpenParticipantModal = useCallback((participant: Participant) => {
+      setEditingParticipant(participant);
+      setParticipantModalOpen(true);
+  }, []);
+
+  const handleOpenNewParticipantModal = useCallback(() => {
+    const newParticipant: Participant = {
+        id: `p${Date.now()}${Math.random().toString(16).slice(2)}`,
+        firstName: '',
+        lastName: '',
+        email: '',
+        phone: '',
+        birthYear: new Date().getFullYear() - 30,
+        perfClass: PerfClass.B,
+        gender: Gender.Male,
+        isRsvMember: false,
+    };
+    setEditingParticipant(newParticipant);
+    setParticipantModalOpen(true);
+  }, []);
+
+
+  const handleCloseParticipantModal = useCallback(() => {
+      setEditingParticipant(undefined);
+      setParticipantModalOpen(false);
+  }, []);
+
+  const handleSaveParticipant = useCallback((participantData: Participant) => {
+      setParticipants(prevParticipants => {
+          const exists = prevParticipants.some(p => p.id === participantData.id);
+          if (exists) {
+              return prevParticipants.map(p =>
+                  p.id === participantData.id ? participantData : p
+              );
+          } else {
+              return [...prevParticipants, participantData];
+          }
+      });
+      handleCloseParticipantModal();
+  }, [handleCloseParticipantModal]);
+
+  const handleDeleteParticipant = (participantId: string) => {
+      if (!window.confirm("Möchten Sie diesen Teilnehmer und alle zugehörigen Ergebnisse wirklich löschen? Dies kann nicht rückgängig gemacht werden.")) {
+          return;
+      }
+      setParticipants(currentParticipants =>
+          currentParticipants.filter(p => p.id !== participantId)
+      );
+      setResults(currentResults =>
+          currentResults.filter(r => r.participantId !== participantId)
+      );
+      setTeamMembers(currentTeamMembers =>
+          currentTeamMembers.filter(tm => tm.participantId !== participantId)
+      );
   };
 
-    const handleOpenParticipantModal = (participant: Participant) => {
-        setEditingParticipant(participant);
-        setParticipantModalOpen(true);
-    };
+  const handleViewEvent = useCallback((eventId: string) => {
+      setSelectedEventId(eventId);
+      setView('eventDetail');
+  }, []);
 
-    const handleCloseParticipantModal = () => {
-        setEditingParticipant(undefined);
-        setParticipantModalOpen(false);
-    };
+  const handleBackToEventsList = useCallback(() => {
+      setSelectedEventId(null);
+      setView('events');
+  }, []);
+  
+  const isNewParticipant = useMemo(() => {
+      if (!editingParticipant) return false;
+      return !participants.some(p => p.id === editingParticipant.id);
+  }, [editingParticipant, participants]);
 
-    const handleSaveParticipant = (participantData: Participant) => {
-        setParticipants(prevParticipants => 
-            prevParticipants.map(p => 
-                p.id === participantData.id ? participantData : p
-            )
-        );
-        handleCloseParticipantModal();
-    };
+  // Handlers for the Team Edit Modal
+  const handleOpenTeamEditModal = useCallback((eventId: string) => {
+      const eventToEdit = events.find(e => e.id === eventId);
+      if (eventToEdit) {
+          setEditingEventForTeams(eventToEdit);
+          setTeamEditModalOpen(true);
+      }
+  }, [events]);
 
-    const handleDeleteParticipant = (participantId: string) => {
-        if (!window.confirm("Möchten Sie diesen Teilnehmer und alle zugehörigen Ergebnisse wirklich löschen? Dies kann nicht rückgängig gemacht werden.")) {
-            return;
-        }
+  const handleCloseTeamEditModal = useCallback(() => {
+      setEditingEventForTeams(null);
+      setTeamEditModalOpen(false);
+  }, []);
 
-        // --- FIX for Stale State and Data Consistency ---
-        // Applying the same robust pattern as in handleDeleteEvent.
-        // All updates are performed as independent, functional state updates.
-        // This ensures data integrity across all related state slices.
+  const handleSaveTeamsAndMembers = useCallback((
+      updatedTeamsForEvent: Team[],
+      updatedTeamMembersForEvent: TeamMember[]
+  ) => {
+      if (!editingEventForTeams) return;
+      const eventId = editingEventForTeams.id;
+  
+      const oldTeamIdsForEvent = new Set(teams.filter(t => t.eventId === eventId).map(t => t.id));
+  
+      setTeams(prev => [
+          ...prev.filter(t => t.eventId !== eventId),
+          ...updatedTeamsForEvent
+      ]);
+  
+      setTeamMembers(prev => [
+          ...prev.filter(tm => !oldTeamIdsForEvent.has(tm.teamId)),
+          ...updatedTeamMembersForEvent
+      ]);
+  
+      handleCloseTeamEditModal();
+  }, [editingEventForTeams, teams, handleCloseTeamEditModal]);
 
-        // 1. Remove the participant from the main list.
-        setParticipants(currentParticipants =>
-            currentParticipants.filter(p => p.id !== participantId)
-        );
-
-        // 2. Remove all results for this participant across all events.
-        setResults(currentResults =>
-            currentResults.filter(r => r.participantId !== participantId)
-        );
-
-        // 3. Remove the participant from any teams they are a member of.
-        setTeamMembers(currentTeamMembers =>
-            currentTeamMembers.filter(tm => tm.participantId !== participantId)
-        );
-    };
-
-    const handleViewEvent = (eventId: string) => {
-        setSelectedEventId(eventId);
-        setView('eventDetail');
-    };
-
-    const handleBackToEventsList = () => {
-        setSelectedEventId(null);
-        setView('events');
-    };
 
   const renderView = () => {
     switch (view) {
       case 'dashboard':
         return <Dashboard selectedSeason={selectedSeason} />;
       case 'participants':
-        return <ParticipantsList participants={participants} onOpenImportModal={() => setImportModalOpen(true)} onEditParticipant={handleOpenParticipantModal} onDeleteParticipant={handleDeleteParticipant} />;
+        return <ParticipantsList participants={participants} onOpenImportModal={() => setImportModalOpen(true)} onEditParticipant={handleOpenParticipantModal} onDeleteParticipant={handleDeleteParticipant} onNewParticipant={handleOpenNewParticipantModal} />;
       case 'events':
         return <EventsList events={eventsForSeason} onNewEvent={() => handleOpenEventModal()} onEditEvent={handleOpenEventModal} onDeleteEvent={handleDeleteEvent} onViewDetails={handleViewEvent} />;
       case 'standings':
@@ -361,7 +427,8 @@ const App: React.FC = () => {
                         teams={eventTeams}
                         teamMembers={eventTeamMembers}
                         settings={settings}
-                        onBack={handleBackToEventsList} 
+                        onBack={handleBackToEventsList}
+                        onEditTeams={handleOpenTeamEditModal}
                     />;
         }
       default:
@@ -431,7 +498,18 @@ const App: React.FC = () => {
             onClose={handleCloseParticipantModal}
             onSave={handleSaveParticipant}
             participant={editingParticipant}
+            isNew={isNewParticipant}
         />
+      )}
+      {isTeamEditModalOpen && editingEventForTeams && (
+          <TeamEditModal
+              event={editingEventForTeams}
+              initialTeams={teams.filter(t => t.eventId === editingEventForTeams.id)}
+              initialTeamMembers={teamMembers.filter(tm => teams.some(t => t.id === tm.teamId && t.eventId === editingEventForTeams.id))}
+              allParticipants={participants}
+              onClose={handleCloseTeamEditModal}
+              onSave={handleSaveTeamsAndMembers}
+          />
       )}
     </div>
   );
