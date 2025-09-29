@@ -125,15 +125,16 @@ const calculateHandicapPoints = (
             continue;
         }
 
-        let points = 0;
         const basePoints = settings.handicapBasePoints[participant.perfClass] || 0;
+        let points;
 
-        if (result.finisherGroup === 1) {
-            points = basePoints;
-        } else if (result.finisherGroup === 2) {
-            points = Math.max(1, basePoints - 1); // 1 point deduction for group 2
+        if (result.finisherGroup === 2) {
+            // Finisher in group 2 gets base points minus one, with a minimum of 1.
+            points = Math.max(1, basePoints - 1);
         } else {
-             points = 1; // Finisher points if no group
+            // Finisher in group 1 or with no group assigned gets full base points.
+            // If base points are 0 for their class, they still get a finisher point.
+            points = Math.max(1, basePoints);
         }
 
         // Add winner points bonus
@@ -268,29 +269,41 @@ export const calculateOverallStandings = (
 ): Record<GroupLabel, Standing[]> => {
     const participantMap = new Map(participants.map(p => [p.id, p]));
     const standingsByParticipant: Record<string, Standing> = {};
-
-    for (const p of participants) {
-        standingsByParticipant[p.id] = {
-            participantId: p.id,
-            participantName: `${p.lastName}, ${p.firstName}`,
-            participantClass: p.perfClass,
-            totalPoints: 0,
-            results: [],
-            finalPoints: 0,
-            tieBreakerScores: [],
-        };
-    }
-
     const finishedEventIds = new Set(events.filter(e => e.finished).map(e => e.id));
 
+    // Only create standings for participants who have results in finished events.
     for (const result of results) {
-        if (finishedEventIds.has(result.eventId) && standingsByParticipant[result.participantId]) {
-            standingsByParticipant[result.participantId].results.push({
-                eventId: result.eventId,
-                points: result.points,
-                isDropped: false,
-            });
+        if (!finishedEventIds.has(result.eventId)) {
+            continue;
         }
+
+        const participantId = result.participantId;
+        const participant = participantMap.get(participantId);
+
+        // Skip results from deleted/unknown participants
+        if (!participant) {
+            continue;
+        }
+
+        // If we haven't seen this participant before, create their standing entry.
+        if (!standingsByParticipant[participantId]) {
+            standingsByParticipant[participantId] = {
+                participantId: participant.id,
+                participantName: `${participant.lastName}, ${participant.firstName}`,
+                participantClass: participant.perfClass,
+                totalPoints: 0,
+                results: [],
+                finalPoints: 0,
+                tieBreakerScores: [],
+            };
+        }
+
+        // Add the result to the participant's standing.
+        standingsByParticipant[participantId].results.push({
+            eventId: result.eventId,
+            points: result.points,
+            isDropped: false,
+        });
     }
 
     Object.values(standingsByParticipant).forEach(standing => {
