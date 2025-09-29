@@ -438,9 +438,11 @@ const App: React.FC = () => {
 
   return (
     <div className="flex bg-light min-h-screen font-sans">
-      <Sidebar activeView={view} setView={setView} />
+      <div className="no-print">
+        <Sidebar activeView={view} setView={setView} />
+      </div>
       <main className="flex-1 ml-64 p-8">
-         <div className="flex justify-between items-center mb-4">
+         <div className="flex justify-between items-center mb-4 no-print">
             <div></div>
             <div className="flex items-center space-x-4">
                 <label htmlFor="season-select" className="font-bold text-gray-700">Saison:</label>

@@ -22,6 +22,64 @@
         }
       }
     </script>
+    <style>
+      @media screen {
+        .print-only {
+          display: none;
+        }
+      }
+      @media print {
+        .no-print {
+          display: none !important;
+        }
+        .print-only {
+          display: block !important;
+        }
+        body {
+          margin: 0;
+          padding: 0;
+          background-color: #ffffff !important;
+          font-size: 10pt;
+        }
+        /* Reset the main flex container to a simple block layout for printing */
+        #root > div {
+            display: block !important;
+        }
+        @page {
+          size: A4 portrait;
+          margin: 1.5cm;
+        }
+        main {
+          margin: 0 !important;
+          padding: 0 !important;
+        }
+        main > .bg-white {
+          box-shadow: none !important;
+          padding: 0 !important;
+          min-height: auto !important;
+          border: none !important;
+        }
+        h1, h2, h3, h4 {
+          page-break-after: avoid;
+        }
+        table {
+          page-break-inside: auto;
+          width: 100%;
+          border-collapse: collapse;
+        }
+        tr {
+          page-break-inside: avoid;
+        }
+        thead {
+          display: table-header-group; /* Repeat headers on each page */
+        }
+        th, td {
+          border: 1px solid #dddddd;
+          padding: 4px;
+          text-align: left;
+        }
+      }
+    </style>
   <script type="importmap">
 {
   "imports": {

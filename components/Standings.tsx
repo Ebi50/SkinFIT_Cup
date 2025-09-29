@@ -1,7 +1,8 @@
 import React, { useMemo, useState } from 'react';
 import { Participant, Event, Result, Settings, GroupLabel, EventType } from '../types';
 import { calculateOverallStandings, Standing } from '../services/scoringService';
-import { ChartBarIcon } from './icons';
+import { ChartBarIcon, DownloadIcon } from './icons';
+import { PrintableReport } from './PrintableReport';
 
 interface StandingsProps {
   participants: Participant[];
@@ -152,22 +153,44 @@ export const Standings: React.FC<StandingsProps> = ({ participants, events, resu
   );
 
   const finishedEvents = useMemo(() => events.filter(e => e.finished).sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime()), [events]);
+  const currentSeason = useMemo(() => events.length > 0 ? events[0].season : new Date().getFullYear(), [events]);
+
 
   return (
     <div>
-      <div className="flex items-center space-x-3 mb-6">
-        <ChartBarIcon />
-        <h1 className="text-3xl font-bold text-secondary">Gesamtwertung</h1>
-      </div>
-      <p className="mb-8 text-gray-600">
-        Die Gesamtwertung wird automatisch basierend auf den Ergebnissen der abgeschlossenen Rennen berechnet. 
-        Streichergebnisse ({settings.dropScores}) werden berücksichtigt und sind durchgestrichen markiert. Klicken Sie auf eine Spaltenüberschrift, um die Tabelle zu sortieren.
-      </p>
+      <div className="no-print">
+        <div className="flex justify-between items-center mb-6">
+            <div className="flex items-center space-x-3">
+                <ChartBarIcon />
+                <h1 className="text-3xl font-bold text-secondary">Gesamtwertung</h1>
+            </div>
+             <button
+                onClick={() => window.print()}
+                className="bg-secondary hover:bg-gray-700 text-white font-bold py-2 px-4 rounded-lg flex items-center space-x-2 transition-transform transform hover:scale-105"
+            >
+                <DownloadIcon className="w-5 h-5" />
+                <span>PDF Export / Drucken</span>
+            </button>
+        </div>
+        <p className="mb-8 text-gray-600">
+          Die Gesamtwertung wird automatisch basierend auf den Ergebnissen der abgeschlossenen Rennen berechnet. 
+          Streichergebnisse ({settings.dropScores}) werden berücksichtigt und sind durchgestrichen markiert. Klicken Sie auf eine Spaltenüberschrift, um die Tabelle zu sortieren.
+        </p>
 
-      <div className="grid grid-cols-1 gap-8">
-        <StandingsTable title="Männer Ambitioniert (C/D)" standings={groupedStandings[GroupLabel.Ambitious]} finishedEvents={finishedEvents} />
-        <StandingsTable title="Männer Hobby (A/B)" standings={groupedStandings[GroupLabel.Hobby]} finishedEvents={finishedEvents} />
-        <StandingsTable title="Frauen" standings={groupedStandings[GroupLabel.Women]} finishedEvents={finishedEvents} />
+        <div className="grid grid-cols-1 gap-8">
+          <StandingsTable title="Männer Ambitioniert (C/D)" standings={groupedStandings[GroupLabel.Ambitious]} finishedEvents={finishedEvents} />
+          <StandingsTable title="Männer Hobby (A/B)" standings={groupedStandings[GroupLabel.Hobby]} finishedEvents={finishedEvents} />
+          <StandingsTable title="Frauen" standings={groupedStandings[GroupLabel.Women]} finishedEvents={finishedEvents} />
+        </div>
+      </div>
+
+      <div className="print-only">
+        <PrintableReport 
+            participants={participants}
+            standings={groupedStandings}
+            finishedEvents={finishedEvents}
+            season={currentSeason}
+        />
       </div>
     </div>
   );

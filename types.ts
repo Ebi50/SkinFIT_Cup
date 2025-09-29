@@ -36,6 +36,7 @@ export interface Participant {
   club?: string;
   startNumber?: string;
   nationality?: string;
+  raceId?: string;
 }
 
 export interface Event {
