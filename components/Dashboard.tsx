@@ -1,8 +1,12 @@
 import React from 'react';
 import { DownloadIcon } from './icons';
+import { Participant, Event } from '../types';
+import { generateProjectMarkdown } from '../services/markdownGenerator';
 
 interface DashboardProps {
   selectedSeason: number | null;
+  participants: Participant[];
+  events: Event[];
 }
 
 const generateSpecDocument = () => {
@@ -63,9 +67,22 @@ Die Anwendung ist als moderne Single-Page-Application (SPA) konzipiert und nutzt
 };
 
 
-export const Dashboard: React.FC<DashboardProps> = ({ selectedSeason }) => {
+export const Dashboard: React.FC<DashboardProps> = ({ selectedSeason, participants, events }) => {
   const handleDownloadSpecification = () => {
     generateSpecDocument();
+  };
+
+  const handleDownloadMarkdown = () => {
+    const content = generateProjectMarkdown(participants, events, selectedSeason);
+    const blob = new Blob([content], { type: 'text/markdown;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `Skinfit_Cup_${selectedSeason}_Dokumentation.md`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
   };
 
   return (
@@ -73,13 +90,22 @@ export const Dashboard: React.FC<DashboardProps> = ({ selectedSeason }) => {
         <div className="text-gray-700 mb-8">
             Willkommen beim Skinfit Cup! <br/>Verwaltungs- & Wertungsapp für die Saison <strong>{selectedSeason}</strong>. Wählen Sie einen Menüpunkt, um zu starten.
         </div>
-        <button
-            onClick={handleDownloadSpecification}
-            className="bg-primary hover:bg-primary-dark text-white font-bold py-2 px-4 rounded-lg flex items-center space-x-2 transition-transform transform hover:scale-105"
-        >
-            <DownloadIcon className="w-5 h-5" />
-            <span>Spezifikation herunterladen (.txt)</span>
-        </button>
+        <div className="flex items-center space-x-4">
+          <button
+              onClick={handleDownloadSpecification}
+              className="bg-primary hover:bg-primary-dark text-white font-bold py-2 px-4 rounded-lg flex items-center space-x-2 transition-transform transform hover:scale-105"
+          >
+              <DownloadIcon className="w-5 h-5" />
+              <span>Spezifikation herunterladen (.txt)</span>
+          </button>
+           <button
+              onClick={handleDownloadMarkdown}
+              className="bg-secondary hover:bg-gray-700 text-white font-bold py-2 px-4 rounded-lg flex items-center space-x-2 transition-transform transform hover:scale-105"
+          >
+              <DownloadIcon className="w-5 h-5" />
+              <span>Projekt-Doku herunterladen (.md)</span>
+          </button>
+        </div>
     </div>
   );
 };

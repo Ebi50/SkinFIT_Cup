@@ -402,7 +402,11 @@ const App: React.FC = () => {
   const renderView = () => {
     switch (view) {
       case 'dashboard':
-        return <Dashboard selectedSeason={selectedSeason} />;
+        return <Dashboard 
+                  selectedSeason={selectedSeason} 
+                  participants={participants}
+                  events={eventsForSeason}
+                />;
       case 'participants':
         return <ParticipantsList participants={participants} onOpenImportModal={() => setImportModalOpen(true)} onEditParticipant={handleOpenParticipantModal} onDeleteParticipant={handleDeleteParticipant} onNewParticipant={handleOpenNewParticipantModal} />;
       case 'events':
